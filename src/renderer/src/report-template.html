@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>数据分析报告</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+      background: #fff; color: #1a1a2e; font-size: 13px; line-height: 1.6;
+    }
+    .page {
+      width: 210mm; min-height: 297mm;
+      padding: 14mm 12mm; page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { page-break-after: always; }
+    }
+
+    /* 封面 */
+    .cover {
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      min-height: 270mm;
+      background: linear-gradient(135deg, #0b163a 0%, #1d2b64 50%, #764ba2 100%);
+      border-radius: 8px; color: #fff; text-align: center; padding: 40px;
+    }
+    .cover-icon { font-size: 72px; margin-bottom: 24px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
+    .cover-title { font-size: 36px; font-weight: 900; margin-bottom: 12px; letter-spacing: 3px; }
+    .cover-subtitle { font-size: 17px; opacity: 0.85; margin-bottom: 12px; }
+    .cover-divider { width: 80px; height: 3px; background: rgba(255,255,255,0.4); margin: 28px auto; border-radius: 2px; }
+    .cover-meta { font-size: 14px; opacity: 0.75; line-height: 2; }
+    .cover-badge {
+      display: inline-block; padding: 6px 16px; border-radius: 999px;
+      background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+      margin-top: 20px; font-size: 12px;
+    }
+
+    /* 页眉 */
+    .page-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 10px; border-bottom: 2px solid #1d2b64; margin-bottom: 18px;
+    }
+    .page-header-title { font-size: 15px; font-weight: 800; color: #1d2b64; }
+    .page-header-sub { font-size: 11px; color: #888; }
+
+    /* 章节标题 */
+    .section-title {
+      font-size: 15px; font-weight: 800; color: #1d2b64;
+      margin: 16px 0 10px; padding-left: 10px;
+      border-left: 4px solid #4facfe;
+    }
+    .section-desc { color: #666; font-size: 11px; margin: 0 0 10px 14px; }
+
+    /* 卡片网格 */
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
+
+    .card {
+      background: linear-gradient(135deg, #f0f4ff, #e8f0fe);
+      border: 1px solid #c5d5f5; border-radius: 10px;
+      padding: 12px 14px; text-align: center;
+    }
+    .card.highlight {
+      background: linear-gradient(135deg, #1d2b64, #4facfe);
+      border-color: #4facfe; color: #fff;
+    }
+    .card.success { background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-color: #81c784; }
+    .card.warning { background: linear-gradient(135deg, #fff8e1, #ffe0b2); border-color: #ffb74d; }
+    .card.danger { background: linear-gradient(135deg, #ffebee, #ffcdd2); border-color: #e57373; }
+    .card-val { font-size: 22px; font-weight: 900; color: #1d2b64; }
+    .card.highlight .card-val, .card.danger .card-val { color: #fff; }
+    .card.danger .card-val { color: #c62828; }
+    .card-lbl { font-size: 11px; color: #666; margin-top: 4px; }
+    .card.highlight .card-lbl { color: rgba(255,255,255,0.85); }
+
+    /* 表格 */
+    table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 14px; }
+    thead th {
+      background: #1d2b64; color: #fff; padding: 7px 9px;
+      text-align: left; font-weight: 600;
+    }
+    tbody td {
+      padding: 6px 9px; border-bottom: 1px solid #eef0f5; color: #333;
+    }
+    tbody tr:nth-child(even) td { background: #f8f9ff; }
+    .up { color: #2e7d32; font-weight: 700; }
+    .down { color: #c62828; font-weight: 700; }
+    .highlight-cell { background: #fff3cd !important; font-weight: 700; }
+    .outlier-cell { background: #fde8e8 !important; color: #c62828; font-weight: 700; }
+    .mini-bar {
+      display: inline-block; height: 8px; border-radius: 4px;
+      background: linear-gradient(90deg, #4facfe, #00f2fe);
+      vertical-align: middle; margin-right: 6px;
+    }
+
+    /* 图表 */
+    .chart-row { display: grid; gap: 12px; margin-bottom: 14px; }
+    .chart-row.cols-2 { grid-template-columns: 1fr 1fr; }
+    .chart-box {
+      border: 1px solid #e0e4f0; border-radius: 10px;
+      padding: 10px; background: #fafbff;
+    }
+    .chart-title { font-size: 11.5px; font-weight: 700; color: #1d2b64; margin-bottom: 6px; }
+    .chart-canvas { width: 100%; height: 200px; }
+    .chart-canvas.tall { height: 240px; }
+    .chart-canvas.short { height: 180px; }
+
+    /* 结论 */
+    .insight-group {
+      background: linear-gradient(135deg, #f0f4ff, #e8f0fe);
+      border: 1px solid #c5d5f5; border-radius: 10px;
+      padding: 14px 18px; margin-bottom: 14px;
+    }
+    .insight-title { font-size: 13px; font-weight: 800; color: #1d2b64; margin-bottom: 8px; }
+    .insight-item {
+      display: flex; gap: 8px; margin-bottom: 6px;
+      font-size: 12px; color: #333; line-height: 1.55;
+    }
+    .insight-dot { font-weight: 900; flex-shrink: 0; }
+    .insight-item.positive { color: #2e7d32; }
+    .insight-item.positive .insight-dot { color: #2e7d32; }
+    .insight-item.warning { color: #c62828; }
+    .insight-item.warning .insight-dot { color: #c62828; }
+    .insight-item.correlation { background: #fff8e1; padding: 6px 10px; border-radius: 6px; border-left: 3px solid #ffa726; }
+    .insight-item.info .insight-dot { color: #4facfe; }
+    .insight-item.stats .insight-dot { color: #7e57c2; }
+    .insight-item.trend .insight-dot { color: #26a69a; }
+    .insight-item.overview .insight-dot { color: #1d2b64; }
+
+    /* 评分条 */
+    .score-wrap { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .score-circle {
+      width: 80px; height: 80px; border-radius: 50%;
+      display: grid; place-items: center;
+      font-size: 26px; font-weight: 900; color: #fff;
+      flex-shrink: 0;
+    }
+    .score-circle.good { background: linear-gradient(135deg, #43a047, #66bb6a); }
+    .score-circle.ok { background: linear-gradient(135deg, #fb8c00, #ffa726); }
+    .score-circle.bad { background: linear-gradient(135deg, #e53935, #ef5350); }
+    .score-label { font-size: 12px; color: #666; }
+    .score-metric { font-size: 13px; color: #333; line-height: 1.9; }
+
+    /* 页脚 */
+    .page-footer {
+      margin-top: 18px; padding-top: 10px;
+      border-top: 1px solid #e0e4f0;
+      display: flex; justify-content: space-between;
+      font-size: 10px; color: #aaa;
+    }
+  </style>
+</head>
+<body>
+<script>
+window.addEventListener('DOMContentLoaded', function() {
+  const D = window.__REPORT_DATA__;
+  if (!D) { document.body.innerHTML = '<p style="color:red;padding:40px">数据未注入</p>'; return; }
+
+  const fmt = (n) => n == null ? '—' : Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+  const pct = (n) => n == null ? '—' : (n > 0 ? '+' : '') + n + '%';
+  const round = (n, p = 2) => { if (n == null) return 0; const f = Math.pow(10, p); return Math.round(Number(n) * f) / f; };
+
+  const summary = D.summary || {};
+  const primaryCol = summary.primaryValueColumn || '';
+  const mainCat = summary.categoryColumn || '';
+  const dateCol = summary.dateColumn || '';
+  const stats = primaryCol && summary.columnStats ? summary.columnStats[primaryCol] : null;
+  const quality = D.dataQuality || {};
+  const insights = D.insights || [];
+
+  const app = document.getElementById('report-app');
+  let pageNum = 0;
+  const nextPage = () => ++pageNum;
+
+  // ─── 页 1：封面 ─────────────────────────────────────────────────────────────
+  app.innerHTML += `
+  <div class="page">
+    <div class="cover">
+      <div class="cover-icon">📊</div>
+      <div class="cover-title">数据分析报告</div>
+      <div class="cover-subtitle">${D.fileName || '数据文件'}</div>
+      <div class="cover-badge">综合质量评分 ${quality.score || '—'} 分</div>
+      <div class="cover-divider"></div>
+      <div class="cover-meta">
+        生成时间：${D.generatedAt}<br/>
+        数据规模：${(summary.totalRows || 0).toLocaleString()} 行 × ${(D.headers || []).length} 列<br/>
+        ${primaryCol ? `主指标：${primaryCol}` : ''}${mainCat ? ` · 主分类：${mainCat}` : ''}${dateCol ? ` · 时间维度：${dateCol}` : ''}
+      </div>
+    </div>
+  </div>`;
+  nextPage();
+
+  // ─── 页 2：数据概览 + 质量评估 ─────────────────────────────────────────────────
+  const qLevel = quality.score >= 90 ? 'good' : quality.score >= 60 ? 'ok' : 'bad';
+  let page2 = `
+  <div class="page">
+    <div class="page-header">
+      <div class="page-header-title">📋 数据概览 & 质量评估</div>
+      <div class="page-header-sub">${D.fileName}</div>
+    </div>
+
+    <div class="section-title">数据概览</div>
+    <div class="grid-4">
+      <div class="card highlight"><div class="card-val">${(summary.totalRows || 0).toLocaleString()}</div><div class="card-lbl">数据行数</div></div>
+      <div class="card"><div class="card-val">${(D.headers || []).length}</div><div class="card-lbl">总列数</div></div>
+      <div class="card"><div class="card-val">${(summary.numericColumns || []).length}</div><div class="card-lbl">数值列</div></div>
+      <div class="card"><div class="card-val">${(summary.categoryColumns || []).length}</div><div class="card-lbl">分类列</div></div>
+    </div>
+
+    <div class="section-title">数据质量评估</div>
+    <div class="section-desc">基于填充率、重复率等指标综合评分，满分 100 分</div>
+    <div class="score-wrap">
+      <div class="score-circle ${qLevel}">${quality.score || '—'}</div>
+      <div class="score-metric">
+        📥 总单元格数：${(quality.totalCells || 0).toLocaleString()} 个 &nbsp;·&nbsp; 缺失：${(quality.totalNulls || 0).toLocaleString()} 个<br/>
+        ✅ 整体填充率：<strong>${quality.overallFillRate || 0}%</strong><br/>
+        🔁 重复行：${quality.duplicates || 0} 条（${quality.duplicateRate || 0}%）
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:14px">各列填充率</div>
+    <table>
+      <thead><tr><th>列名</th><th>非空数</th><th>缺失数</th><th>填充率</th></tr></thead>
+      <tbody>`;
+  const qCols = Object.entries(quality.columns || {});
+  qCols.forEach(([col, info]) => {
+    const rateClass = info.fillRate >= 95 ? 'up' : info.fillRate < 70 ? 'down' : '';
+    const barWidth = Math.max(2, Math.min(100, info.fillRate));
+    page2 += `<tr>
+      <td><strong>${col}</strong></td>
+      <td>${(quality.totalRows - info.nulls).toLocaleString()}</td>
+      <td>${info.nulls}</td>
+      <td><span class="mini-bar" style="width:${barWidth * 0.6}px"></span><span class="${rateClass}">${info.fillRate}%</span></td>
+    </tr>`;
+  });
+  page2 += `</tbody></table>
+    <div class="page-footer"><span>Excel 报告生成器</span><span>第 ${nextPage()} 页</span></div>
+  </div>`;
+  app.innerHTML += page2;
+
+  // ─── 页 3：全维度统计 ────────────────────────────────────────────────────────
+  let page3 = `
+  <div class="page">
+    <div class="page-header">
+      <div class="page-header-title">📈 数值列全维度统计</div>
+      <div class="page-header-sub">${D.fileName}</div>
+    </div>`;
+
+  if (stats && primaryCol) {
+    page3 += `
+    <div class="section-title">主指标「${primaryCol}」核心统计</div>
+    <div class="grid-4">
+      <div class="card highlight"><div class="card-val">${fmt(stats.sum)}</div><div class="card-lbl">总计</div></div>
+      <div class="card"><div class="card-val">${fmt(stats.avg)}</div><div class="card-lbl">均值</div></div>
+      <div class="card"><div class="card-val">${fmt(stats.median)}</div><div class="card-lbl">中位数</div></div>
+      <div class="card"><div class="card-val">${fmt(stats.std)}</div><div class="card-lbl">标准差</div></div>
+      <div class="card"><div class="card-val">${fmt(stats.max)}</div><div class="card-lbl">最大值</div></div>
+      <div class="card"><div class="card-val">${fmt(stats.min)}</div><div class="card-lbl">最小值</div></div>
+      <div class="card"><div class="card-val">${fmt(stats.p25)}</div><div class="card-lbl">P25</div></div>
+      <div class="card"><div class="card-val">${fmt(stats.p75)}</div><div class="card-lbl">P75</div></div>
+    </div>`;
+  }
+
+  if (summary.columnStats && Object.keys(summary.columnStats).length > 0) {
+    page3 += `
+    <div class="section-title">所有数值列统计明细</div>
+    <table>
+      <thead><tr>
+        <th>列名</th><th>有效</th><th>总计</th><th>均值</th><th>中位数</th>
+        <th>最大</th><th>最小</th><th>标准差</th><th>变异系数</th>
+      </tr></thead>
+      <tbody>`;
+    for (const [col, s] of Object.entries(summary.columnStats)) {
+      const cvClass = s.cv > 1 ? 'down' : s.cv < 0.3 ? 'up' : '';
+      page3 += `<tr>
+        <td><strong>${col}</strong></td>
+        <td>${s.count.toLocaleString()}</td>
+        <td>${fmt(s.sum)}</td>
+        <td>${fmt(s.avg)}</td>
+        <td>${fmt(s.median)}</td>
+        <td>${fmt(s.max)}</td>
+        <td>${fmt(s.min)}</td>
+        <td>${fmt(s.std)}</td>
+        <td class="${cvClass}">${s.cv}</td>
+      </tr>`;
+    }
+    page3 += `</tbody></table>
+    <div class="section-desc">📌 变异系数 CV = 标准差/均值，CV < 0.3 表示稳定，CV > 1 表示波动剧烈</div>`;
+  }
+
+  page3 += `<div class="page-footer"><span>Excel 报告生成器</span><span>第 ${nextPage()} 页</span></div></div>`;
+  app.innerHTML += page3;
+
+  // ─── 页 4：分布 & 箱线 ───────────────────────────────────────────────────────
+  let page4 = `
+  <div class="page">
+    <div class="page-header">
+      <div class="page-header-title">📊 数据分布形态</div>
+      <div class="page-header-sub">${D.fileName}</div>
+    </div>
+    <div class="section-title">主指标「${primaryCol}」分布直方图</div>
+    <div class="section-desc">查看数据集中的区间分布</div>
+    <div class="chart-box">
+      <div id="chart-hist" class="chart-canvas tall"></div>
+    </div>
+    <div class="section-title">数值列箱线图对比</div>
+    <div class="section-desc">展示各数值列的中位数、四分位数、离群值</div>
+    <div class="chart-box">
+      <div id="chart-box" class="chart-canvas tall"></div>
+    </div>
+    <div class="page-footer"><span>Excel 报告生成器</span><span>第 ${nextPage()} 页</span></div>
+  </div>`;
+  app.innerHTML += page4;
+
+  // ─── 页 5：月度 & 季度趋势 ───────────────────────────────────────────────────
+  const monthly = D.monthlyGrowth || [];
+  const quarterly = D.quarterlyGrowth || [];
+  if (monthly.length > 0 || quarterly.length > 0) {
+    let page5 = `
+    <div class="page">
+      <div class="page-header">
+        <div class="page-header-title">📅 时间趋势分析</div>
+        <div class="page-header-sub">${D.fileName}</div>
+      </div>`;
+    if (monthly.length > 0) {
+      page5 += `
+      <div class="section-title">月度趋势（${primaryCol}）</div>
+      <div class="chart-box"><div id="chart-monthly" class="chart-canvas tall"></div></div>`;
+    }
+    if (quarterly.length > 0) {
+      page5 += `
+      <div class="section-title">季度趋势</div>
+      <div class="chart-box"><div id="chart-quarterly" class="chart-canvas short"></div></div>`;
+    }
+    page5 += `<div class="page-footer"><span>Excel 报告生成器</span><span>第 ${nextPage()} 页</span></div></div>`;
+    app.innerHTML += page5;
+  }
+
+  // ─── 页 6：分类分析 ──────────────────────────────────────────────────────────
+  const catData = (D.categoryBreakdowns && mainCat) ? D.categoryBreakdowns[mainCat] : [];
+  if (catData.length > 0) {
+    let page6 = `
+    <div class="page">
+      <div class="page-header">
+        <div class="page-header-title">🗂️ 分类维度分析</div>
+        <div class="page-header-sub">${D.fileName}</div>
+      </div>
+      <div class="section-title">按「${mainCat}」分类占比</div>
+      <div class="chart-row cols-2">
+        <div class="chart-box">
+          <div class="chart-title">饼图</div>
+          <div id="chart-pie" class="chart-canvas"></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">横向柱状图（Top 10）</div>
+          <div id="chart-bar" class="chart-canvas"></div>
+        </div>
+      </div>`;
+
+    if (D.topBottom) {
+      page6 += `
+      <div class="section-title">Top / Bottom 对比</div>
+      <div class="chart-box"><div id="chart-topbottom" class="chart-canvas short"></div></div>`;
+    }
+
+    page6 += `<div class="page-footer"><span>Excel 报告生成器</span><span>第 ${nextPage()} 页</span></div></div>`;
+    app.innerHTML += page6;
+  }
+
+  // ─── 页 7：相关性 & 多维交叉 ─────────────────────────────────────────────────
+  if (D.correlations && D.correlations.cols.length >= 2) {
+    let page7 = `
+    <div class="page">
+      <div class="page-header">
+        <div class="page-header-title">🔗 关联性分析</div>
+        <div class="page-header-sub">${D.fileName}</div>
+      </div>
+      <div class="section-title">数值列相关性热力图</div>
+      <div class="section-desc">皮尔逊相关系数 r：接近 1 表示强正相关，接近 -1 表示强负相关，接近 0 表示无关</div>
+      <div class="chart-box"><div id="chart-corr" class="chart-canvas tall"></div></div>`;
+
+    if (D.crossAnalysis) {
+      page7 += `
+      <div class="section-title">「${summary.categoryColumn}」× 「${summary.secondCategoryColumn}」交叉热力</div>
+      <div class="section-desc">两个分类维度交叉下 ${primaryCol} 的分布</div>
+      <div class="chart-box"><div id="chart-cross" class="chart-canvas tall"></div></div>`;
+    }
+
+    page7 += `<div class="page-footer"><span>Excel 报告生成器</span><span>第 ${nextPage()} 页</span></div></div>`;
+    app.innerHTML += page7;
+  }
+
+  // ─── 页 8：明细表 ────────────────────────────────────────────────────────────
+  let page8 = `
+  <div class="page">
+    <div class="page-header">
+      <div class="page-header-title">📋 明细数据</div>
+      <div class="page-header-sub">${D.fileName}</div>
+    </div>`;
+
+  if (monthly.length > 0) {
+    page8 += `
+    <div class="section-title">月度明细（最近 18 期）</div>
+    <table>
+      <thead><tr><th>月份</th><th>合计</th><th>均值</th><th>笔数</th><th>最大</th><th>最小</th><th>环比</th><th>同比</th></tr></thead>
+      <tbody>`;
+    for (const row of monthly.slice(-18)) {
+      const momCls = row.mom > 0 ? 'up' : row.mom < 0 ? 'down' : '';
+      const yoyCls = row.yoy > 0 ? 'up' : row.yoy < 0 ? 'down' : '';
+      page8 += `<tr>
+        <td>${row.period}</td><td>${fmt(row.sum)}</td><td>${fmt(row.avg)}</td>
+        <td>${row.count}</td><td>${fmt(row.max)}</td><td>${fmt(row.min)}</td>
+        <td class="${momCls}">${pct(row.mom)}</td>
+        <td class="${yoyCls}">${pct(row.yoy)}</td>
+      </tr>`;
+    }
+    page8 += `</tbody></table>`;
+  }
+
+  if (catData.length > 0) {
+    const totalSum = stats?.sum || catData.reduce((s, r) => s + r.sum, 0);
+    page8 += `
+    <div class="section-title" style="margin-top:14px">「${mainCat}」分类明细（Top 15）</div>
+    <table>
+      <thead><tr><th>分类</th><th>合计</th><th>均值</th><th>笔数</th><th>占比</th></tr></thead>
+      <tbody>`;
+    for (const row of catData.slice(0, 15)) {
+      const p = totalSum ? (row.sum / totalSum * 100).toFixed(1) + '%' : '—';
+      page8 += `<tr><td>${row.name}</td><td>${fmt(row.sum)}</td><td>${fmt(row.avg)}</td><td>${row.count}</td><td>${p}</td></tr>`;
+    }
+    page8 += `</tbody></table>`;
+  }
+
+  page8 += `<div class="page-footer"><span>Excel 报告生成器</span><span>第 ${nextPage()} 页</span></div></div>`;
+  app.innerHTML += page8;
+
+  // ─── 页 9：智能结论 + 异常值 ─────────────────────────────────────────────────
+  let page9 = `
+  <div class="page">
+    <div class="page-header">
+      <div class="page-header-title">💡 智能分析结论</div>
+      <div class="page-header-sub">${D.fileName}</div>
+    </div>
+    <div class="section-title">核心洞察</div>
+    <div class="insight-group">
+      <div class="insight-title">📌 发现 ${insights.length} 项关键结论</div>
+      ${insights.map(it => `<div class="insight-item ${it.type}"><span class="insight-dot">▶</span><span>${it.text}</span></div>`).join('')}
+    </div>`;
+
+  if (D.outliers && D.outliers.length > 0) {
+    page9 += `
+    <div class="section-title">⚠️ 异常值明细（${D.outliers.length} 条，±3σ 范围外）</div>
+    <table>
+      <thead><tr>${(D.headers || []).map(h => `<th>${h}</th>`).join('')}</tr></thead>
+      <tbody>${D.outliers.map(row => `<tr>${(D.headers || []).map(h => `<td class="outlier-cell">${row[h] ?? '—'}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+  }
+
+  page9 += `
+    <div class="page-footer">
+      <span>Excel 报告生成器 · 本报告由系统自动生成，仅供参考</span>
+      <span>第 ${nextPage()} 页</span>
+    </div>
+  </div>`;
+  app.innerHTML += page9;
+
+  // ─── 渲染所有 ECharts ──────────────────────────────────────────────────────
+  setTimeout(() => {
+    const COLORS = ['#4facfe', '#00f2fe', '#f093fb', '#fbc531', '#26a69a', '#7e57c2', '#ef5350', '#ffa726'];
+
+    // 直方图
+    if (D.distribution && D.distribution.bins.length > 0) {
+      const el = document.getElementById('chart-hist');
+      if (el) echarts.init(el).setOption({
+        grid: { top: 20, right: 20, bottom: 70, left: 60 },
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: D.distribution.labels, axisLabel: { rotate: 40, fontSize: 9, interval: 0 } },
+        yAxis: { type: 'value', name: '频次', axisLabel: { fontSize: 10 } },
+        series: [{
+          type: 'bar', data: D.distribution.bins,
+          itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: '#4facfe' }, { offset: 1, color: '#00f2fe' }] }, borderRadius: [4, 4, 0, 0] }
+        }]
+      });
+    }
+
+    // 箱线图
+    const boxEl = document.getElementById('chart-box');
+    if (boxEl && summary.columnStats) {
+      const cols = Object.keys(summary.columnStats).slice(0, 6);
+      const boxData = cols.map(c => {
+        const s = summary.columnStats[c];
+        return [s.min, s.p25, s.median, s.p75, s.max];
+      });
+      echarts.init(boxEl).setOption({
+        grid: { top: 20, right: 20, bottom: 60, left: 60 },
+        tooltip: { trigger: 'item' },
+        xAxis: { type: 'category', data: cols, axisLabel: { rotate: 30, fontSize: 10, interval: 0 } },
+        yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+        series: [{ type: 'boxplot', data: boxData, itemStyle: { color: '#4facfe', borderColor: '#1d2b64' } }]
+      });
+    }
+
+    // 月度趋势
+    if (monthly.length > 0) {
+      const el = document.getElementById('chart-monthly');
+      if (el) echarts.init(el).setOption({
+        grid: { top: 30, right: 20, bottom: 50, left: 60 },
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['合计', '均值'], top: 0, textStyle: { fontSize: 10 } },
+        xAxis: { type: 'category', data: monthly.map(m => m.period), axisLabel: { rotate: 40, fontSize: 9 } },
+        yAxis: [{ type: 'value', axisLabel: { fontSize: 10 } }],
+        series: [
+          {
+            name: '合计', type: 'line', data: monthly.map(m => m.sum), smooth: true,
+            symbolSize: 5, lineStyle: { color: '#4facfe', width: 2.5 },
+            areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(79,172,254,0.3)' }, { offset: 1, color: 'rgba(79,172,254,0.02)' }] } },
+            itemStyle: { color: '#4facfe' }
+          },
+          { name: '均值', type: 'line', data: monthly.map(m => m.avg), smooth: true, symbolSize: 4, lineStyle: { color: '#f093fb', width: 2, type: 'dashed' }, itemStyle: { color: '#f093fb' } }
+        ]
+      });
+    }
+
+    // 季度趋势
+    if (quarterly.length > 0) {
+      const el = document.getElementById('chart-quarterly');
+      if (el) echarts.init(el).setOption({
+        grid: { top: 20, right: 20, bottom: 40, left: 60 },
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: quarterly.map(q => q.period), axisLabel: { fontSize: 10 } },
+        yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+        series: [{
+          type: 'bar', data: quarterly.map(q => q.sum),
+          itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: '#26a69a' }, { offset: 1, color: '#80cbc4' }] }, borderRadius: [4, 4, 0, 0] }
+        }]
+      });
+    }
+
+    // 饼图
+    if (catData.length > 0) {
+      const el = document.getElementById('chart-pie');
+      if (el) echarts.init(el).setOption({
+        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+        legend: { orient: 'vertical', right: 0, top: 'center', textStyle: { fontSize: 9 }, itemWidth: 10, itemHeight: 10 },
+        color: COLORS,
+        series: [{
+          type: 'pie', radius: ['40%', '70%'], center: ['35%', '50%'],
+          data: catData.slice(0, 8).map(r => ({ name: r.name, value: r.sum })),
+          label: { show: false }
+        }]
+      });
+
+      // 横向柱状图
+      const barEl = document.getElementById('chart-bar');
+      if (barEl) {
+        const top10 = catData.slice(0, 10);
+        echarts.init(barEl).setOption({
+          grid: { top: 10, right: 50, bottom: 20, left: 90 },
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'value', axisLabel: { fontSize: 9 } },
+          yAxis: { type: 'category', data: top10.map(r => r.name).reverse(), axisLabel: { fontSize: 9 } },
+          series: [{
+            type: 'bar', data: top10.map(r => r.sum).reverse(),
+            itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#4facfe' }, { offset: 1, color: '#00f2fe' }] }, borderRadius: [0, 4, 4, 0] },
+            label: { show: true, position: 'right', fontSize: 9, formatter: p => fmt(p.value) }
+          }]
+        });
+      }
+    }
+
+    // Top/Bottom 对比
+    if (D.topBottom) {
+      const el = document.getElementById('chart-topbottom');
+      if (el) {
+        const topData = D.topBottom.top.slice(0, 5);
+        const botData = D.topBottom.bottom.slice(0, 5);
+        echarts.init(el).setOption({
+          grid: { top: 30, right: 20, bottom: 50, left: 60 },
+          legend: { data: ['Top 5', 'Bottom 5'], top: 0, textStyle: { fontSize: 10 } },
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'category', data: [...topData, ...botData].map(r => r.name), axisLabel: { rotate: 30, fontSize: 9 } },
+          yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+          series: [
+            { name: 'Top 5', type: 'bar', data: [...topData.map(r => r.sum), ...botData.map(() => 0)], itemStyle: { color: '#43a047', borderRadius: [4, 4, 0, 0] } },
+            { name: 'Bottom 5', type: 'bar', data: [...topData.map(() => 0), ...botData.map(r => r.sum)], itemStyle: { color: '#ef5350', borderRadius: [4, 4, 0, 0] } }
+          ]
+        });
+      }
+    }
+
+    // 相关性热力图
+    if (D.correlations && D.correlations.cols.length >= 2) {
+      const el = document.getElementById('chart-corr');
+      if (el) {
+        const { cols, matrix } = D.correlations;
+        const data = [];
+        for (let i = 0; i < cols.length; i++) {
+          for (let j = 0; j < cols.length; j++) {
+            data.push([j, i, matrix[i][j]]);
+          }
+        }
+        echarts.init(el).setOption({
+          grid: { top: 10, right: 60, bottom: 60, left: 80 },
+          tooltip: { position: 'top', formatter: p => `${cols[p.value[1]]} vs ${cols[p.value[0]]}: ${p.value[2]}` },
+          xAxis: { type: 'category', data: cols, axisLabel: { rotate: 40, fontSize: 9 } },
+          yAxis: { type: 'category', data: cols, axisLabel: { fontSize: 9 } },
+          visualMap: { min: -1, max: 1, calculable: true, orient: 'vertical', right: 0, top: 'center', inRange: { color: ['#c62828', '#ffffff', '#2e7d32'] }, textStyle: { fontSize: 9 } },
+          series: [{ type: 'heatmap', data, label: { show: true, fontSize: 9, formatter: p => round(p.value[2], 2) }, itemStyle: { borderColor: '#fff', borderWidth: 1 } }]
+        });
+      }
+    }
+
+    // 交叉热力
+    if (D.crossAnalysis) {
+      const el = document.getElementById('chart-cross');
+      if (el) {
+        const { cat1Keys, cat2Keys, matrix } = D.crossAnalysis;
+        const data = [];
+        let maxV = 0;
+        for (let i = 0; i < cat1Keys.length; i++) {
+          for (let j = 0; j < cat2Keys.length; j++) {
+            const v = matrix[i][j];
+            data.push([j, i, v]);
+            if (v > maxV) maxV = v;
+          }
+        }
+        echarts.init(el).setOption({
+          grid: { top: 10, right: 60, bottom: 60, left: 80 },
+          tooltip: { position: 'top' },
+          xAxis: { type: 'category', data: cat2Keys, axisLabel: { rotate: 40, fontSize: 9 } },
+          yAxis: { type: 'category', data: cat1Keys, axisLabel: { fontSize: 9 } },
+          visualMap: { min: 0, max: maxV, calculable: true, orient: 'vertical', right: 0, top: 'center', inRange: { color: ['#e3f2fd', '#1976d2'] }, textStyle: { fontSize: 9 } },
+          series: [{ type: 'heatmap', data, label: { show: true, fontSize: 8, formatter: p => fmt(p.value[2]) }, itemStyle: { borderColor: '#fff', borderWidth: 1 } }]
+        });
+      }
+    }
+
+    if (window.__CHARTS_READY__) window.__CHARTS_READY__();
+  }, 600);
+});
+</script>
+<div id="report-app"></div>
+</body>
+</html>

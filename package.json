@@ -1,0 +1,69 @@
+{
+    "name": "excel-report",
+    "version": "1.0.0",
+    "description": "Excel 数据分析报告生成器 - Electron Desktop App",
+    "main": "./out/main/index.js",
+    "author": "zhubaodong",
+    "scripts": {
+        "format": "prettier --write .",
+        "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
+        "start": "electron-vite preview",
+        "dev": "electron-vite dev",
+        "build": "electron-vite build",
+        "postinstall": "electron-builder install-app-deps",
+        "build:mac": "npm run build && electron-builder --mac",
+        "build:win": "npm run build && electron-builder --win"
+    },
+    "dependencies": {
+        "@electron-toolkit/preload": "^3.0.0",
+        "@electron-toolkit/utils": "^3.0.0",
+        "echarts": "^5.5.0",
+        "xlsx": "^0.18.5"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-vue": "^5.0.4",
+        "electron": "^33.2.0",
+        "electron-builder": "^25.1.8",
+        "electron-vite": "^2.3.0",
+        "prettier": "^3.2.5",
+        "vite": "^5.4.0",
+        "vue": "^3.5.0"
+    },
+    "build": {
+        "appId": "com.excel.report",
+        "productName": "Excel 报告生成器",
+        "directories": {
+            "output": "dist"
+        },
+        "files": [
+            "out/**/*",
+            "resources/**/*"
+        ],
+        "mac": {
+            "target": [
+                "dmg",
+                "zip"
+            ],
+            "category": "public.app-category.productivity"
+        },
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ]
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "installerLanguages": [
+                "zh_CN",
+                "en_US"
+            ],
+            "language": "2052"
+        }
+    }
+}
