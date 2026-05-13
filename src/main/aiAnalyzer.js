@@ -143,6 +143,114 @@ export async function generateInsights(analysisData, { apiKey } = {}) {
 }
 
 /**
+ * AI 生成报告规划（根据用户自然语言需求，输出结构化报告配置）
+ */
+export async function generateReportPlan(analysisData, userRequest, { apiKey } = {}) {
+  const summary = buildDataSummary(analysisData)
+
+  // 把更完整的数据传给 AI
+  const fullData = {
+    文件名: summary.文件名,
+    数据规模: summary.数据规模,
+    数据质量: summary.数据质量,
+    主指标: summary.主指标,
+    主指标统计: summary.主指标统计,
+    时间维度: summary.时间维度,
+    分类维度: summary.分类维度,
+    月度趋势: summary.月度趋势,
+    主分类Top10: summary.主分类Top10,
+    相关性: summary.相关性,
+    异常值数量: summary.异常值数量
+  }
+
+  const messages = [
+    {
+      role: 'system',
+      content: `你是一位数据可视化工程师。你需要根据用户需求和数据，直接生成一个完整的 HTML 页面代码，用于渲染成 PDF 报告。
+
+技术要求：
+1. 使用 ECharts 5.x 绑图表（已通过 <script> 标签全局引入，直接用 echarts.init() 即可）
+2. 页面宽度 210mm（A4），用 class="page" 分页，每页 min-height: 297mm，page-break-after: always
+3. 支持 @media print 的 -webkit-print-color-adjust: exact
+4. 图表容器必须有明确的 width 和 height（如 width:100%; height:200px）
+5. 图表在 DOMContentLoaded 后用 setTimeout 600ms 初始化
+6. 所有数据直接硬编码在 JS 中（不需要外部数据注入）
+
+样式建议：
+- 背景白色，字体用 PingFang SC / Microsoft YaHei
+- 封面可用渐变背景
+- 标题用深蓝色 #1d2b64，强调色 #4facfe
+- 表格、卡片、图表自由组合
+
+输出要求：
+- 只输出 HTML 代码，从 <!DOCTYPE html> 开始到 </html> 结束
+- 不要 markdown 代码块包裹，直接输出纯 HTML
+- 根据用户需求决定页数、内容详略、图表类型
+- 用户说"一页"就只生成一页，说"详细"就多页`
+    },
+    {
+      role: 'user',
+      content: `数据：${JSON.stringify(fullData)}\n\n用户需求：${userRequest}`
+    }
+  ]
+
+  try {
+    const content = await callGLM(messages, { apiKey, maxTokens: 4000, temperature: 0.7 })
+    // 提取 HTML（可能被 ```html ``` 包裹）
+    let html = content
+    const htmlMatch = content.match(/<!DOCTYPE[\s\S]*<\/html>/i)
+    if (htmlMatch) {
+      html = htmlMatch[0]
+    } else {
+      // 尝试去掉 markdown 代码块
+      html = content.replace(/^```html?\s*/i, '').replace(/\s*```\s*$/, '')
+    }
+    if (!html.includes('<html') && !html.includes('<body')) {
+      throw new Error('AI 未返回有效 HTML')
+    }
+    return { success: true, plan: { html } }
+  } catch (err) {
+    console.error('[aiAnalyzer] generateReportPlan 失败:', err.message)
+    return { success: false, error: err.message, plan: null }
+  }
+}
+
+/**
+ * AI 为报告章节生成叙述文案
+ */
+export async function generateNarrative(analysisData, focus, { apiKey } = {}) {
+  const summary = buildDataSummary(analysisData)
+
+  const focusPrompts = {
+    executive_summary: '撰写一段 200-300 字的执行摘要，从业务角度解读数据，指出关键发现和建议。',
+    brief_summary: '用 100 字以内概括数据的核心发现，语言精炼。',
+    trend_analysis: '针对时间趋势数据，分析增长/下降原因，给出趋势判断和预测。200 字以内。',
+    risk_warning: '重点分析数据中的风险信号和异常，给出预警建议。200 字以内。'
+  }
+
+  const prompt = focusPrompts[focus] || focusPrompts.executive_summary
+
+  const messages = [
+    {
+      role: 'system',
+      content: `你是一位资深数据分析师。${prompt}
+要求：使用中文，不要 markdown，不要开头套话，直接输出纯文本。`
+    },
+    {
+      role: 'user',
+      content: `数据分析结果：\n${JSON.stringify(summary, null, 2)}`
+    }
+  ]
+
+  try {
+    const content = await callGLM(messages, { apiKey, maxTokens: 800 })
+    return { success: true, content }
+  } catch (err) {
+    return { success: false, error: err.message, content: '' }
+  }
+}
+
+/**
  * 用户自定义提问（二期功能，先提供接口）
  */
 export async function askAboutData(analysisData, question, { apiKey } = {}) {

@@ -9,8 +9,12 @@ const electronAPI = {
   analyzeExcel: (opts) => electron.ipcRenderer.invoke("analyze-excel", opts),
   // 旧接口兼容
   parseExcel: (filePath) => electron.ipcRenderer.invoke("parse-excel", filePath),
-  // 生成 PDF 报告
-  generatePdf: () => electron.ipcRenderer.invoke("generate-pdf"),
+  // 生成 PDF 报告（支持模板选择）
+  generatePdf: (opts) => electron.ipcRenderer.invoke("generate-pdf", opts || {}),
+  // 获取报告模板列表
+  getReportTemplates: () => electron.ipcRenderer.invoke("get-report-templates"),
+  // AI 生成报告规划
+  aiReportPlan: (opts) => electron.ipcRenderer.invoke("ai-report-plan", opts),
   // AI 执行摘要
   aiSummary: (opts) => electron.ipcRenderer.invoke("ai-summary", opts || {}),
   // AI 深度洞察

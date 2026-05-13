@@ -13,8 +13,14 @@ const electronAPI = {
   // 旧接口兼容
   parseExcel: (filePath) => ipcRenderer.invoke('parse-excel', filePath),
 
-  // 生成 PDF 报告
-  generatePdf: () => ipcRenderer.invoke('generate-pdf'),
+  // 生成 PDF 报告（支持模板选择）
+  generatePdf: (opts) => ipcRenderer.invoke('generate-pdf', opts || {}),
+
+  // 获取报告模板列表
+  getReportTemplates: () => ipcRenderer.invoke('get-report-templates'),
+
+  // AI 生成报告规划
+  aiReportPlan: (opts) => ipcRenderer.invoke('ai-report-plan', opts),
 
   // AI 执行摘要
   aiSummary: (opts) => ipcRenderer.invoke('ai-summary', opts || {}),

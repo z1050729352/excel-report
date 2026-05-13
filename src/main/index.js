@@ -4,7 +4,8 @@ import { readFileSync, writeFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import XLSX from 'xlsx'
 import { analyzeData } from './analyzer.js'
-import { generateExecutiveSummary, generateInsights, askAboutData } from './aiAnalyzer.js'
+import { generateExecutiveSummary, generateInsights, askAboutData, generateReportPlan } from './aiAnalyzer.js'
+import { getTemplateList, getTemplate } from './reportTemplates.js'
 
 let mainWindow = null
 let reportWindow = null
@@ -179,21 +180,68 @@ ipcMain.handle('save-ai-summary', async (_e, { summary }) => {
   return { success: true }
 })
 
-// ─── IPC: 生成 PDF ────────────────────────────────────────────────────────────
-ipcMain.handle('generate-pdf', async () => {
+// ─── IPC: 获取报告模板列表 ────────────────────────────────────────────────────
+ipcMain.handle('get-report-templates', async () => {
+  return { success: true, templates: getTemplateList() }
+})
+
+// ─── IPC: AI 生成报告规划 ────────────────────────────────────────────────────
+ipcMain.handle('ai-report-plan', async (_e, { userRequest, apiKey } = {}) => {
+  if (!cachedAnalysisData) return { success: false, error: '没有分析数据' }
+  mainWindow?.webContents.send('progress', { message: 'AI 正在规划报告…', percent: 30 })
+  const result = await generateReportPlan(cachedAnalysisData, userRequest, { apiKey })
+  mainWindow?.webContents.send('progress', { message: result.success ? '报告规划完成' : '规划失败', percent: 100 })
+  return result
+})
+
+// ─── IPC: 生成 PDF（支持模板选择）─────────────────────────────────────────────
+ipcMain.handle('generate-pdf', async (_e, { templateId, customPlan } = {}) => {
   const send = (message, percent) => mainWindow?.webContents.send('progress', { message, percent })
   const analysisData = cachedAnalysisData
   if (!analysisData) return { success: false, error: '没有可用的分析数据' }
 
   try {
-    send('正在准备报告模板…', 15)
+    send('正在准备报告…', 15)
 
-    const templatePath = is.dev
-      ? join(process.cwd(), 'src/renderer/src/report-template.html')
-      : join(__dirname, '../renderer/report-template.html')
+    // 确定报告配置
+    let reportConfig
+    if (customPlan) {
+      // AI 定制模式：customPlan 包含 reportTitle 和 sections（AI 生成的文字内容）
+      reportConfig = { mode: 'ai', ...customPlan }
+      console.log('[generate-pdf] 使用 AI 定制方案:', reportConfig.reportTitle, '章节:', JSON.stringify(reportConfig.sections?.map(s => s.title)))
+    } else {
+      // 预设模板模式
+      reportConfig = { mode: 'template', ...(getTemplate(templateId || 'detailed')) }
+      console.log('[generate-pdf] 使用预设模板:', reportConfig.id)
+    }
 
-    let html = readFileSync(templatePath, 'utf-8')
+    // 注入报告配置到数据中
+    const reportData = { ...analysisData, __reportConfig__: reportConfig }
 
+    // 根据模式选择模板文件
+    let html
+    if (reportConfig.mode === 'ai' && reportConfig.html) {
+      // AI 模式：直接使用 AI 生成的 HTML
+      html = reportConfig.html
+      console.log('[generate-pdf] 使用 AI 生成的 HTML，长度:', html.length)
+    } else {
+      // 预设模板模式：根据模板 ID 选择对应文件
+      const templateMap = {
+        detailed: 'report-template.html',
+        executive: 'report-executive.html',
+        dashboard: 'report-dashboard.html',
+        minimal: 'report-minimal.html'
+      }
+      const templateFile = templateMap[reportConfig.id] || 'report-template.html'
+      const templatePath = is.dev
+        ? join(process.cwd(), 'src/renderer/src', templateFile)
+        : join(__dirname, '../renderer', templateFile)
+      console.log('[generate-pdf] 使用模板:', templateFile)
+      html = readFileSync(templatePath, 'utf-8')
+      html = html.replace('</head>', `<script>window.__REPORT_DATA__ = ${JSON.stringify(reportData)};</script>\n</head>`)
+    }
+
+    // 内联 ECharts
     const echartsPath = join(process.cwd(), 'node_modules/echarts/dist/echarts.min.js')
     try {
       const echartsCode = readFileSync(echartsPath, 'utf-8')
@@ -205,11 +253,13 @@ ipcMain.handle('generate-pdf', async () => {
       console.warn('[generate-pdf] 无法内联 ECharts:', e.message)
     }
 
-    html = html.replace('</head>', `<script>window.__REPORT_DATA__ = ${JSON.stringify(analysisData)};</script>\n</head>`)
+    send('正在打开渲染窗口…', 35)
 
-    send('正在打开渲染窗口…', 30)
-
-    if (!reportWindow || reportWindow.isDestroyed()) createReportWindow()
+    // 强制重建窗口，避免缓存
+    if (reportWindow && !reportWindow.isDestroyed()) {
+      reportWindow.destroy()
+    }
+    createReportWindow()
 
     await Promise.race([
       new Promise((resolve, reject) => {
@@ -220,12 +270,12 @@ ipcMain.handle('generate-pdf', async () => {
       new Promise((_, reject) => setTimeout(() => reject(new Error('页面加载超时（10s）')), 10000))
     ])
 
-    send('正在渲染图表（约3秒）…', 50)
+    send('正在渲染图表（约3秒）…', 55)
     await new Promise(r => setTimeout(r, 1000))
-    send('正在渲染图表…', 62)
+    send('正在渲染图表…', 68)
     await new Promise(r => setTimeout(r, 1500))
 
-    send('正在导出 PDF…', 75)
+    send('正在导出 PDF…', 80)
 
     const pdfBuffer = await Promise.race([
       reportWindow.webContents.printToPDF({
@@ -235,7 +285,7 @@ ipcMain.handle('generate-pdf', async () => {
       new Promise((_, reject) => setTimeout(() => reject(new Error('PDF 导出超时（30s）')), 30000))
     ])
 
-    send('请选择保存位置…', 88)
+    send('请选择保存位置…', 90)
 
     const defaultName = `分析报告_${analysisData.fileName?.replace(/\.[^.]+$/, '') || 'report'}_${Date.now()}.pdf`
     const { filePath: savePath, canceled } = await dialog.showSaveDialog(mainWindow, {

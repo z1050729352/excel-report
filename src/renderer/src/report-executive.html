@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>商务简报</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+      background: #fff; color: #1a1a2e; font-size: 14px; line-height: 1.7;
+    }
+    .page {
+      width: 210mm; min-height: 297mm;
+      padding: 16mm 14mm; page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { page-break-after: always; }
+    }
+
+    /* 封面 */
+    .cover {
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      min-height: 270mm;
+      background: linear-gradient(135deg, #0b163a 0%, #1d2b64 50%, #4facfe 100%);
+      border-radius: 12px; color: #fff; text-align: center; padding: 50px;
+    }
+    .cover-icon { font-size: 80px; margin-bottom: 28px; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.3)); }
+    .cover-title { font-size: 42px; font-weight: 900; margin-bottom: 10px; letter-spacing: 4px; }
+    .cover-subtitle { font-size: 18px; opacity: 0.85; margin-bottom: 8px; }
+    .cover-divider { width: 100px; height: 3px; background: rgba(255,255,255,0.4); margin: 32px auto; border-radius: 2px; }
+    .cover-meta { font-size: 15px; opacity: 0.75; line-height: 2.2; }
+    .cover-badge {
+      display: inline-block; padding: 8px 20px; border-radius: 999px;
+      background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+      margin-top: 24px; font-size: 13px;
+    }
+
+    /* 页眉 */
+    .page-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 10px; border-bottom: 2px solid #1d2b64; margin-bottom: 20px;
+    }
+    .page-header-title { font-size: 16px; font-weight: 800; color: #1d2b64; }
+    .page-header-sub { font-size: 11px; color: #888; }
+
+    /* KPI 卡片 */
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+    .kpi-card {
+      background: linear-gradient(135deg, #f0f4ff, #e8f0fe);
+      border: 1px solid #c5d5f5; border-radius: 12px;
+      padding: 18px 16px; text-align: center;
+    }
+    .kpi-card.primary {
+      background: linear-gradient(135deg, #1d2b64, #4facfe);
+      border-color: #4facfe; color: #fff;
+    }
+    .kpi-val { font-size: 28px; font-weight: 900; color: #1d2b64; }
+    .kpi-card.primary .kpi-val { color: #fff; }
+    .kpi-lbl { font-size: 12px; color: #666; margin-top: 6px; }
+    .kpi-card.primary .kpi-lbl { color: rgba(255,255,255,0.85); }
+
+    /* 图表 */
+    .chart-box {
+      border: 1px solid #e0e4f0; border-radius: 12px;
+      padding: 16px; background: #fafbff; margin-bottom: 20px;
+    }
+    .chart-title { font-size: 13px; font-weight: 700; color: #1d2b64; margin-bottom: 10px; }
+    .chart-canvas { width: 100%; height: 240px; }
+
+    .chart-row { display: grid; gap: 14px; margin-bottom: 20px; }
+    .chart-row.cols-2 { grid-template-columns: 1fr 1fr; }
+
+    /* 结论 */
+    .conclusion-box {
+      background: linear-gradient(135deg, #f0f4ff, #e8f0fe);
+      border: 1px solid #c5d5f5; border-radius: 12px;
+      padding: 18px 22px; margin-top: 16px;
+    }
+    .conclusion-title { font-size: 14px; font-weight: 800; color: #1d2b64; margin-bottom: 10px; }
+    .conclusion-item {
+      display: flex; gap: 8px; margin-bottom: 8px;
+      font-size: 13px; color: #333; line-height: 1.6;
+    }
+    .conclusion-dot { color: #4facfe; font-weight: 900; flex-shrink: 0; }
+
+    /* 增长高亮 */
+    .growth-highlights {
+      background: #fff; border: 1px solid #e0e4f0; border-radius: 12px;
+      padding: 16px 20px; margin-top: 16px;
+    }
+    .growth-title { font-size: 13px; font-weight: 700; color: #1d2b64; margin-bottom: 10px; }
+    .growth-item { font-size: 12px; color: #333; margin-bottom: 6px; line-height: 1.6; }
+    .up { color: #2e7d32; font-weight: 700; }
+    .down { color: #c62828; font-weight: 700; }
+
+    /* 页脚 */
+    .page-footer {
+      margin-top: auto; padding-top: 12px;
+      border-top: 1px solid #e0e4f0;
+      display: flex; justify-content: space-between;
+      font-size: 10px; color: #aaa;
+    }
+  </style>
+</head>
+<body>
+<div id="report-app"></div>
+<script>
+window.addEventListener('DOMContentLoaded', function() {
+  const D = window.__REPORT_DATA__;
+  if (!D) { document.body.innerHTML = '<p style="color:red;padding:40px">数据未注入</p>'; return; }
+
+  const fmt = (n) => n == null ? '—' : Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+  const pct = (n) => n == null ? '—' : (n > 0 ? '+' : '') + Number(n).toFixed(1) + '%';
+
+  const summary = D.summary || {};
+  const primaryCol = summary.primaryValueColumn || '';
+  const mainCat = summary.categoryColumn || '';
+  const stats = primaryCol && summary.columnStats ? summary.columnStats[primaryCol] : null;
+  const quality = D.dataQuality || {};
+  const insights = D.insights || [];
+  const monthly = D.monthlyGrowth || [];
+  const catBreakdowns = D.categoryBreakdowns || {};
+  const catData = mainCat && catBreakdowns[mainCat] ? catBreakdowns[mainCat] : [];
+
+  const app = document.getElementById('report-app');
+  let pageNum = 0;
+
+  // ─── 页 1：封面 ─────────────────────────────────────────────────────────────
+  app.innerHTML += `
+  <div class="page">
+    <div class="cover">
+      <div class="cover-icon">📋</div>
+      <div class="cover-title">商务简报</div>
+      <div class="cover-subtitle">${D.fileName || '数据文件'}</div>
+      <div class="cover-divider"></div>
+      <div class="cover-meta">
+        生成时间：${D.generatedAt || ''}<br/>
+        数据规模：${fmt(summary.totalRows)} 行 × ${(D.headers || []).length} 列<br/>
+        ${primaryCol ? '核心指标：' + primaryCol : ''}
+      </div>
+      <div class="cover-badge">数据质量 ${quality.score || '—'} 分</div>
+    </div>
+  </div>`;
+  pageNum++;
+
+  // ─── 页 2：KPI + 趋势 + 结论 ─────────────────────────────────────────────────
+  let page2 = `
+  <div class="page">
+    <div class="page-header">
+      <span class="page-header-title">核心指标概览</span>
+      <span class="page-header-sub">第 ${++pageNum} 页</span>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-val">${fmt(summary.totalRows)}</div>
+        <div class="kpi-lbl">数据总量（行）</div>
+      </div>
+      <div class="kpi-card primary">
+        <div class="kpi-val">${stats ? fmt(stats.sum) : '—'}</div>
+        <div class="kpi-lbl">${primaryCol || '主指标'} 总计</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-val">${stats ? fmt(stats.avg) : '—'}</div>
+        <div class="kpi-lbl">${primaryCol || '主指标'} 均值</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-val">${quality.score || '—'}<span style="font-size:14px">分</span></div>
+        <div class="kpi-lbl">数据质量评分</div>
+      </div>
+    </div>`;
+
+  // 月度趋势图
+  if (monthly.length > 0) {
+    page2 += `
+    <div class="chart-box">
+      <div class="chart-title">📈 月度趋势</div>
+      <div id="chart-trend" class="chart-canvas"></div>
+    </div>`;
+  }
+
+  // 结论（前3条洞察）
+  const topInsights = insights.slice(0, 3);
+  if (topInsights.length > 0) {
+    page2 += `
+    <div class="conclusion-box">
+      <div class="conclusion-title">💡 核心发现</div>
+      ${topInsights.map(i => `<div class="conclusion-item"><span class="conclusion-dot">●</span><span>${i.text}</span></div>`).join('')}
+    </div>`;
+  }
+
+  page2 += `
+    <div class="page-footer">
+      <span>商务简报 · ${D.fileName || ''}</span>
+      <span>${D.generatedAt || ''}</span>
+    </div>
+  </div>`;
+  app.innerHTML += page2;
+
+  // ─── 页 3：分类分析 + 增长率（仅在有数据时显示）─────────────────────────────────
+  if (catData.length > 0 || monthly.length > 0) {
+    let page3 = `
+    <div class="page">
+      <div class="page-header">
+        <span class="page-header-title">分类与增长分析</span>
+        <span class="page-header-sub">第 ${++pageNum} 页</span>
+      </div>`;
+
+    if (catData.length > 0) {
+      page3 += `
+      <div class="chart-row cols-2">
+        <div class="chart-box">
+          <div class="chart-title">🥧 ${mainCat} 占比分布</div>
+          <div id="chart-pie" class="chart-canvas"></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">📊 Top 5 ${mainCat}</div>
+          <div id="chart-bar" class="chart-canvas"></div>
+        </div>
+      </div>`;
+    }
+
+    // 增长率高亮
+    if (monthly.length > 1) {
+      const growthItems = monthly.filter(m => m.mom != null).slice(-6);
+      if (growthItems.length > 0) {
+        page3 += `
+        <div class="growth-highlights">
+          <div class="growth-title">📈 近期增长率</div>
+          ${growthItems.map(m => {
+            const cls = m.mom > 0 ? 'up' : m.mom < 0 ? 'down' : '';
+            return `<div class="growth-item">${m.period}：环比 <span class="${cls}">${pct(m.mom)}</span>${m.yoy != null ? '，同比 <span class="' + (m.yoy > 0 ? 'up' : 'down') + '">' + pct(m.yoy) + '</span>' : ''}</div>`;
+          }).join('')}
+        </div>`;
+      }
+    }
+
+    page3 += `
+      <div class="page-footer">
+        <span>商务简报 · ${D.fileName || ''}</span>
+        <span>${D.generatedAt || ''}</span>
+      </div>
+    </div>`;
+    app.innerHTML += page3;
+  }
+
+  // ─── ECharts 初始化 ─────────────────────────────────────────────────────────
+  setTimeout(function() {
+    // 月度趋势折线图
+    const trendEl = document.getElementById('chart-trend');
+    if (trendEl && monthly.length > 0) {
+      const chart = echarts.init(trendEl);
+      chart.setOption({
+        color: ['#4facfe', '#1d2b64'],
+        tooltip: { trigger: 'axis' },
+        grid: { left: 60, right: 30, top: 30, bottom: 40 },
+        xAxis: { type: 'category', data: monthly.map(m => m.period), axisLabel: { fontSize: 10 } },
+        yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+        series: [
+          { name: '合计', type: 'line', data: monthly.map(m => m.sum), smooth: true, lineStyle: { width: 3 }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(79,172,254,0.3)' }, { offset: 1, color: 'rgba(79,172,254,0.02)' }] } } },
+          { name: '均值', type: 'line', data: monthly.map(m => m.avg), smooth: true, lineStyle: { width: 2, type: 'dashed' } }
+        ]
+      });
+    }
+
+    // 分类饼图
+    const pieEl = document.getElementById('chart-pie');
+    if (pieEl && catData.length > 0) {
+      const chart = echarts.init(pieEl);
+      chart.setOption({
+        color: ['#1d2b64', '#4facfe', '#764ba2', '#43a047', '#fb8c00', '#e53935'],
+        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+        series: [{
+          type: 'pie', radius: ['35%', '65%'],
+          label: { fontSize: 10 },
+          data: catData.slice(0, 8).map(c => ({ name: c.name, value: c.sum }))
+        }]
+      });
+    }
+
+    // Top5 柱状图
+    const barEl = document.getElementById('chart-bar');
+    if (barEl && catData.length > 0) {
+      const chart = echarts.init(barEl);
+      const top5 = catData.slice(0, 5).reverse();
+      chart.setOption({
+        color: ['#4facfe'],
+        tooltip: { trigger: 'axis' },
+        grid: { left: 90, right: 30, top: 20, bottom: 30 },
+        xAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+        yAxis: { type: 'category', data: top5.map(c => c.name), axisLabel: { fontSize: 10 } },
+        series: [{ type: 'bar', data: top5.map(c => c.sum), barWidth: 20, itemStyle: { borderRadius: [0, 6, 6, 0] } }]
+      });
+    }
+  }, 600);
+});
+</script>
+</body>
+</html>

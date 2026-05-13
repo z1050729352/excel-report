@@ -90,19 +90,74 @@ function onDrop(e) {
   handleFile(file.path)
 }
 
+// ── 报告模板选择 ─────────────────────────────────────────────────────────────
+const showExportModal = ref(false)
+const reportTemplates = ref([])
+const selectedTemplate = ref('detailed')
+const exportMode = ref('template') // 'template' | 'ai'
+const aiExportPrompt = ref('')
+const aiPlanLoading = ref(false)
+const aiPlan = ref(null)
+
+async function openExportModal() {
+  if (!analysisData.value) return
+  showExportModal.value = true
+  // 加载模板列表
+  const result = await window.electronAPI.getReportTemplates()
+  if (result.success) {
+    reportTemplates.value = result.templates
+  }
+}
+
+async function generateAiPlan() {
+  if (!aiExportPrompt.value.trim()) return
+  aiPlanLoading.value = true
+  aiPlan.value = null
+  try {
+    const result = await window.electronAPI.aiReportPlan({ userRequest: aiExportPrompt.value.trim() })
+    if (result.success) {
+      aiPlan.value = result.plan
+    } else {
+      aiError.value = result.error || 'AI 规划失败'
+    }
+  } catch (e) {
+    aiError.value = e.message
+  } finally {
+    aiPlanLoading.value = false
+  }
+}
+
 async function generatePdf() {
   if (!analysisData.value) return
+  showExportModal.value = false
   stage.value = 'generating'
   progress.value = { message: '准备中…', percent: 5 }
   startListeningProgress()
-  const result = await window.electronAPI.generatePdf()
-  if (result.success) {
-    stage.value = 'done'
-    progress.value = { message: `✅ PDF 已保存：${result.path}`, percent: 100 }
-  } else if (result.error !== '用户取消保存') {
-    errorMsg.value = result.error || '生成失败'
-    stage.value = 'done'
+
+  let opts = {}
+  if (exportMode.value === 'ai' && aiPlan.value) {
+    // 深拷贝确保对象可被 IPC 序列化
+    opts = { customPlan: JSON.parse(JSON.stringify(aiPlan.value)) }
   } else {
+    opts = { templateId: selectedTemplate.value }
+  }
+
+  try {
+    console.log('[renderer] generatePdf 调用, opts:', JSON.stringify(opts).slice(0, 200))
+    const result = await window.electronAPI.generatePdf(opts)
+    console.log('[renderer] generatePdf 返回:', result)
+    if (result.success) {
+      stage.value = 'done'
+      progress.value = { message: `✅ PDF 已保存：${result.path}`, percent: 100 }
+    } else if (result.error !== '用户取消保存') {
+      errorMsg.value = result.error || '生成失败'
+      stage.value = 'done'
+    } else {
+      stage.value = 'done'
+    }
+  } catch (e) {
+    console.error('[renderer] generatePdf 异常:', e)
+    errorMsg.value = e.message || '生成失败'
     stage.value = 'done'
   }
 }
@@ -190,7 +245,7 @@ async function runAiAsk() {
       </div>
       <div class="topbar-actions" v-if="stage === 'done'">
         <button class="btn ghost" @click="reset">重新上传</button>
-        <button class="btn primary" :disabled="stage === 'generating'" @click="generatePdf">
+        <button class="btn primary" :disabled="stage === 'generating'" @click="openExportModal">
           {{ stage === 'generating' ? '生成中…' : '🖨️ 导出 PDF' }}
         </button>
       </div>
@@ -487,6 +542,74 @@ async function runAiAsk() {
         <div v-if="errorMsg" class="error-bar">⚠️ {{ errorMsg }}</div>
       </div>
     </main>
+
+    <!-- 导出模态框 -->
+    <div v-if="showExportModal" class="modal-overlay" @click.self="showExportModal = false">
+      <div class="modal-box">
+        <div class="modal-header">
+          <div class="modal-title">🖨️ 选择报告风格</div>
+          <button class="modal-close" @click="showExportModal = false">✕</button>
+        </div>
+
+        <!-- 模式切换 -->
+        <div class="mode-tabs">
+          <div class="mode-tab" :class="{ active: exportMode === 'template' }" @click="exportMode = 'template'">
+            📄 预设模板
+          </div>
+          <div class="mode-tab" :class="{ active: exportMode === 'ai' }" @click="exportMode = 'ai'">
+            🤖 AI 定制
+          </div>
+        </div>
+
+        <!-- 预设模板选择 -->
+        <div v-if="exportMode === 'template'" class="template-grid">
+          <div v-for="t in reportTemplates" :key="t.id"
+            class="template-card" :class="{ selected: selectedTemplate === t.id }"
+            @click="selectedTemplate = t.id">
+            <div class="template-icon">{{ t.icon }}</div>
+            <div class="template-name">{{ t.name }}</div>
+            <div class="template-desc">{{ t.description }}</div>
+            <div class="template-pages">{{ t.pages }}</div>
+          </div>
+        </div>
+
+        <!-- AI 定制 -->
+        <div v-if="exportMode === 'ai'" class="ai-export-section">
+          <div class="ai-export-hint">告诉 AI 你想要什么样的报告，它会为你定制结构和内容</div>
+          <div class="ai-export-examples">
+            <span class="ai-example" @click="aiExportPrompt = '给老板看的简报，突出增长趋势，不要太多细节'">💼 给老板的简报</span>
+            <span class="ai-example" @click="aiExportPrompt = '重点分析分类占比和异常数据，适合数据团队内部review'">📊 数据团队 Review</span>
+            <span class="ai-example" @click="aiExportPrompt = '一页纸看板，信息密度高，适合打印张贴在办公室'">📈 一页看板</span>
+            <span class="ai-example" @click="aiExportPrompt = '完整详细的分析报告，包含所有维度，适合存档'">📋 完整存档报告</span>
+          </div>
+          <div class="ai-export-input-row">
+            <input v-model="aiExportPrompt" class="ai-export-input"
+              placeholder="例如：给老板看的简报，重点突出增长趋势..."
+              @keyup.enter="generateAiPlan" />
+            <button class="btn primary" :disabled="aiPlanLoading || !aiExportPrompt.trim()" @click="generateAiPlan">
+              {{ aiPlanLoading ? '规划中…' : '生成方案' }}
+            </button>
+          </div>
+          <!-- AI 规划结果 -->
+          <div v-if="aiPlan" class="ai-plan-result">
+            <div class="ai-plan-title">✅ AI 已生成定制报告方案</div>
+            <div class="ai-plan-sections">
+              <span class="ai-plan-tag">HTML 报告已就绪，点击下方按钮导出</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部操作 -->
+        <div class="modal-footer">
+          <button class="btn ghost" @click="showExportModal = false">取消</button>
+          <button class="btn primary"
+            :disabled="exportMode === 'ai' && !aiPlan"
+            @click="generatePdf">
+            🚀 开始生成
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -701,4 +824,76 @@ async function runAiAsk() {
 /* 状态栏 */
 .status-bar { margin-top: 16px; padding: 10px 16px; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.2); border-radius: 10px; font-size: 13px; color: #4facfe; }
 .error-bar { margin-top: 16px; padding: 10px 16px; background: rgba(255,100,100,0.1); border: 1px solid rgba(255,100,100,0.2); border-radius: 10px; font-size: 13px; color: #ff6b6b; }
+
+/* 模态框 */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: grid; place-items: center; z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+.modal-box {
+  background: #1a1f2e; border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 20px; padding: 28px; width: 90%; max-width: 680px;
+  max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.modal-title { font-size: 18px; font-weight: 800; color: #fff; }
+.modal-close { background: none; border: none; color: rgba(255,255,255,0.5); font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.modal-close:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+/* 模式切换 */
+.mode-tabs { display: flex; gap: 4px; margin-bottom: 20px; background: rgba(255,255,255,0.05); border-radius: 12px; padding: 4px; }
+.mode-tab {
+  flex: 1; padding: 10px 16px; text-align: center; border-radius: 10px;
+  font-size: 13px; font-weight: 600; cursor: pointer; color: rgba(255,255,255,0.6);
+  transition: all 0.2s;
+}
+.mode-tab.active { background: rgba(79,172,254,0.2); color: #4facfe; }
+.mode-tab:hover:not(.active) { color: rgba(255,255,255,0.9); }
+
+/* 模板网格 */
+.template-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+.template-card {
+  background: rgba(255,255,255,0.04); border: 2px solid rgba(255,255,255,0.08);
+  border-radius: 14px; padding: 18px; cursor: pointer; transition: all 0.2s;
+  text-align: center;
+}
+.template-card:hover { border-color: rgba(79,172,254,0.3); background: rgba(79,172,254,0.05); }
+.template-card.selected { border-color: #4facfe; background: rgba(79,172,254,0.1); box-shadow: 0 0 20px rgba(79,172,254,0.15); }
+.template-icon { font-size: 32px; margin-bottom: 8px; }
+.template-name { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.template-desc { font-size: 11px; color: rgba(255,255,255,0.5); line-height: 1.5; margin-bottom: 6px; }
+.template-pages { font-size: 10px; color: #4facfe; font-weight: 600; }
+
+/* AI 导出 */
+.ai-export-section { margin-bottom: 20px; }
+.ai-export-hint { font-size: 13px; color: rgba(255,255,255,0.7); margin-bottom: 12px; }
+.ai-export-examples { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.ai-example {
+  padding: 6px 12px; border-radius: 999px; font-size: 11px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.8); cursor: pointer; transition: all 0.15s;
+}
+.ai-example:hover { background: rgba(79,172,254,0.15); border-color: rgba(79,172,254,0.3); color: #4facfe; }
+.ai-export-input-row { display: flex; gap: 10px; }
+.ai-export-input {
+  flex: 1; padding: 10px 14px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05);
+  color: #fff; font-size: 13px; outline: none;
+}
+.ai-export-input:focus { border-color: #4facfe; }
+.ai-plan-result {
+  margin-top: 14px; padding: 14px 18px; border-radius: 12px;
+  background: rgba(76,175,80,0.08); border: 1px solid rgba(76,175,80,0.25);
+}
+.ai-plan-title { font-size: 13px; font-weight: 700; color: #66bb6a; margin-bottom: 8px; }
+.ai-plan-sections { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-plan-tag {
+  padding: 3px 8px; border-radius: 6px; font-size: 10px;
+  background: rgba(79,172,254,0.12); color: #4facfe; border: 1px solid rgba(79,172,254,0.2);
+}
+
+/* 模态底部 */
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); }
 </style>

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI 定制报告</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif; background: #fff; color: #1a1a2e; font-size: 13px; line-height: 1.6; }
+    .page { width: 210mm; min-height: 297mm; padding: 14mm 12mm; page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    .cover { display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 270mm; background: linear-gradient(135deg, #0b163a 0%, #1d2b64 50%, #764ba2 100%); border-radius: 8px; color: #fff; text-align: center; padding: 40px; }
+    .cover-icon { font-size: 72px; margin-bottom: 24px; }
+    .cover-title { font-size: 36px; font-weight: 900; margin-bottom: 12px; letter-spacing: 3px; }
+    .cover-subtitle { font-size: 17px; opacity: 0.85; margin-bottom: 12px; }
+    .cover-divider { width: 80px; height: 3px; background: rgba(255,255,255,0.4); margin: 28px auto; border-radius: 2px; }
+    .cover-meta { font-size: 14px; opacity: 0.75; line-height: 2; }
+    .cover-badge { display: inline-block; padding: 6px 16px; border-radius: 999px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); margin-top: 20px; font-size: 12px; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 2px solid #1d2b64; margin-bottom: 18px; }
+    .page-header-title { font-size: 15px; font-weight: 800; color: #1d2b64; }
+    .page-header-sub { font-size: 11px; color: #888; }
+    .section-title { font-size: 15px; font-weight: 800; color: #1d2b64; margin: 16px 0 10px; padding-left: 10px; border-left: 4px solid #4facfe; }
+    .section-content { font-size: 13px; line-height: 2; color: #333; padding: 14px 18px; background: linear-gradient(135deg, #f0f4ff, #e8f0fe); border: 1px solid #c5d5f5; border-radius: 10px; margin-bottom: 16px; white-space: pre-wrap; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    .card { background: linear-gradient(135deg, #f0f4ff, #e8f0fe); border: 1px solid #c5d5f5; border-radius: 10px; padding: 12px 14px; text-align: center; }
+    .card.highlight { background: linear-gradient(135deg, #1d2b64, #4facfe); border-color: #4facfe; color: #fff; }
+    .card-val { font-size: 22px; font-weight: 900; color: #1d2b64; }
+    .card.highlight .card-val { color: #fff; }
+    .card-lbl { font-size: 11px; color: #666; margin-top: 4px; }
+    .card.highlight .card-lbl { color: rgba(255,255,255,0.85); }
+    .chart-box { border: 1px solid #e0e4f0; border-radius: 10px; padding: 10px; background: #fafbff; margin-bottom: 14px; }
+    .chart-canvas { width: 100%; height: 220px; }
+    .chart-row { display: grid; gap: 12px; margin-bottom: 14px; }
+    .chart-row.cols-2 { grid-template-columns: 1fr 1fr; }
+    .page-footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid #e0e4f0; display: flex; justify-content: space-between; font-size: 10px; color: #aaa; }
+  </style>
+</head>
+<body>
+<script>
+window.addEventListener('DOMContentLoaded', function() {
+  const D = window.__REPORT_DATA__;
+  if (!D) { document.body.innerHTML = '<p style="color:red;padding:40px">数据未注入</p>'; return; }
+
+  const CONFIG = D.__reportConfig__ || {};
+  const aiSections = CONFIG.sections || [];
+  const reportTitle = CONFIG.reportTitle || '数据分析报告';
+  console.log('[AI-TEMPLATE] reportTitle:', reportTitle, 'sections:', aiSections.length, aiSections.map(s=>s.title));
+
+  const summary = D.summary || {};
+  const primaryCol = summary.primaryValueColumn || '';
+  const mainCat = summary.categoryColumn || '';
+  const dateCol = summary.dateColumn || '';
+  const stats = primaryCol && summary.columnStats ? summary.columnStats[primaryCol] : null;
+  const fmt = (n) => n == null ? '—' : Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+
+  const app = document.getElementById('report-app');
+  let pageNum = 0;
+  const nextPage = () => ++pageNum;
+
+  // ─── 封面 ───────────────────────────────────────────────────────────────────
+  app.innerHTML += `
+  <div class="page">
+    <div class="cover">
+      <div class="cover-icon">🤖</div>
+      <div class="cover-title">${reportTitle}</div>
+      <div class="cover-subtitle">${D.fileName || '数据文件'}</div>
+      <div class="cover-badge">AI 定制分析报告</div>
+      <div class="cover-divider"></div>
+      <div class="cover-meta">
+        生成时间：${D.generatedAt}<br/>
+        数据规模：${(summary.totalRows || 0).toLocaleString()} 行 × ${(D.headers || []).length} 列<br/>
+        ${primaryCol ? '主指标：' + primaryCol : ''}${mainCat ? ' · 分类：' + mainCat : ''}${dateCol ? ' · 时间：' + dateCol : ''}
+      </div>
+    </div>
+  </div>`;
+  nextPage();
+
+  // ─── 核心指标卡片 + AI 章节内容（动态分页）─────────────────────────────────
+  // 根据 AI sections 数量动态生成页面，每页最多放 2-3 个章节
+  let currentPageHtml = '';
+  let sectionsOnPage = 0;
+  const maxSectionsPerPage = 2;
+
+  function flushCurrentPage() {
+    if (!currentPageHtml) return;
+    app.innerHTML += `
+    <div class="page">
+      <div class="page-header">
+        <div class="page-header-title">📊 ${reportTitle}</div>
+        <div class="page-header-sub">${D.fileName}</div>
+      </div>
+      ${currentPageHtml}
+      <div class="page-footer"><span>Excel 报告生成器 · AI 定制</span><span>第 ${nextPage()} 页</span></div>
+    </div>`;
+    currentPageHtml = '';
+    sectionsOnPage = 0;
+  }
+
+  for (const section of aiSections) {
+    currentPageHtml += `<div class="section-title">${section.title}</div><div class="section-content">${section.content}</div>`;
+    sectionsOnPage++;
+    if (sectionsOnPage >= maxSectionsPerPage) flushCurrentPage();
+  }
+  flushCurrentPage();
+
+  // ─── 图表页（有数据且 AI 决定需要图表才渲染）─────────────────────────────────
+  const showCharts = CONFIG.showCharts !== false;
+  const monthly = D.monthlyGrowth || [];
+  const catData = (D.categoryBreakdowns && mainCat) ? D.categoryBreakdowns[mainCat] : [];
+
+  if (showCharts && (monthly.length > 0 || catData.length > 0)) {
+    let chartHtml = `
+    <div class="page">
+      <div class="page-header">
+        <div class="page-header-title">📈 数据可视化</div>
+        <div class="page-header-sub">${D.fileName}</div>
+      </div>`;
+    if (monthly.length > 0) {
+      chartHtml += `<div class="section-title">趋势变化</div><div class="chart-box"><div id="chart-trend" class="chart-canvas"></div></div>`;
+    }
+    if (catData.length > 0) {
+      chartHtml += `<div class="chart-row cols-2"><div class="chart-box"><div id="chart-pie" class="chart-canvas"></div></div><div class="chart-box"><div id="chart-bar" class="chart-canvas"></div></div></div>`;
+    }
+    chartHtml += `<div class="page-footer"><span>Excel 报告生成器</span><span>第 ${nextPage()} 页</span></div></div>`;
+    app.innerHTML += chartHtml;
+  }
+
+  // ─── 渲染 ECharts ──────────────────────────────────────────────────────────
+  setTimeout(() => {
+    const COLORS = ['#4facfe', '#00f2fe', '#f093fb', '#fbc531', '#26a69a', '#7e57c2', '#ef5350', '#ffa726'];
+
+    if (monthly.length > 0) {
+      const el = document.getElementById('chart-trend');
+      if (el) echarts.init(el).setOption({
+        grid: { top: 30, right: 20, bottom: 50, left: 60 },
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: monthly.map(m => m.period), axisLabel: { rotate: 40, fontSize: 9 } },
+        yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+        series: [{
+          type: 'line', data: monthly.map(m => m.sum), smooth: true,
+          lineStyle: { color: '#4facfe', width: 2.5 },
+          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(79,172,254,0.3)' }, { offset: 1, color: 'rgba(79,172,254,0.02)' }] } },
+          itemStyle: { color: '#4facfe' }, symbolSize: 5
+        }]
+      });
+    }
+
+    if (catData.length > 0) {
+      const pieEl = document.getElementById('chart-pie');
+      if (pieEl) echarts.init(pieEl).setOption({
+        tooltip: { trigger: 'item', formatter: '{b}: {d}%' },
+        color: COLORS,
+        series: [{ type: 'pie', radius: ['35%', '68%'], center: ['50%', '50%'], data: catData.slice(0, 8).map(r => ({ name: r.name, value: r.sum })), label: { fontSize: 9 } }]
+      });
+
+      const barEl = document.getElementById('chart-bar');
+      if (barEl) {
+        const top8 = catData.slice(0, 8);
+        echarts.init(barEl).setOption({
+          grid: { top: 5, right: 40, bottom: 10, left: 80 },
+          xAxis: { type: 'value', axisLabel: { fontSize: 9 } },
+          yAxis: { type: 'category', data: top8.map(r => r.name).reverse(), axisLabel: { fontSize: 9 } },
+          series: [{ type: 'bar', data: top8.map(r => r.sum).reverse(), itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#4facfe' }, { offset: 1, color: '#00f2fe' }] }, borderRadius: [0, 4, 4, 0] }, label: { show: true, position: 'right', fontSize: 8 } }]
+        });
+      }
+    }
+  }, 600);
+});
+</script>
+<div id="report-app"></div>
+</body>
+</html>

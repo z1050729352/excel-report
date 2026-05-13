@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>数据看板</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+      background: #fff; color: #1a1a2e; font-size: 11.5px; line-height: 1.5;
+    }
+    .page {
+      width: 210mm; min-height: 297mm;
+      padding: 10mm 10mm; page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { page-break-after: always; }
+    }
+
+    /* 页眉 */
+    .page-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 6px; border-bottom: 2px solid #1d2b64; margin-bottom: 10px;
+    }
+    .page-header-title { font-size: 13px; font-weight: 800; color: #1d2b64; }
+    .page-header-sub { font-size: 10px; color: #888; }
+
+    /* KPI 小卡片 */
+    .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 12px; }
+    .kpi-mini {
+      background: #f5f7ff; border: 1px solid #dde3f0; border-radius: 8px;
+      padding: 10px 8px; text-align: center;
+    }
+    .kpi-mini.accent {
+      background: linear-gradient(135deg, #1d2b64, #4facfe);
+      border-color: #4facfe; color: #fff;
+    }
+    .kpi-mini-val { font-size: 18px; font-weight: 900; color: #1d2b64; }
+    .kpi-mini.accent .kpi-mini-val { color: #fff; }
+    .kpi-mini-lbl { font-size: 9.5px; color: #666; margin-top: 2px; }
+    .kpi-mini.accent .kpi-mini-lbl { color: rgba(255,255,255,0.8); }
+
+    /* 图表网格 */
+    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .chart-box {
+      border: 1px solid #e0e4f0; border-radius: 8px;
+      padding: 10px; background: #fafbff;
+    }
+    .chart-title { font-size: 10.5px; font-weight: 700; color: #1d2b64; margin-bottom: 6px; }
+    .chart-canvas { width: 100%; height: 180px; }
+
+    /* 表格 */
+    table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 10px; }
+    thead th {
+      background: #1d2b64; color: #fff; padding: 5px 7px;
+      text-align: left; font-weight: 600; font-size: 9.5px;
+    }
+    tbody td { padding: 4px 7px; border-bottom: 1px solid #eef0f5; color: #333; }
+    tbody tr:nth-child(even) td { background: #f8f9ff; }
+    .up { color: #2e7d32; font-weight: 700; }
+    .down { color: #c62828; font-weight: 700; }
+
+    /* 页脚 */
+    .page-footer {
+      margin-top: 8px; padding-top: 6px;
+      border-top: 1px solid #e0e4f0;
+      display: flex; justify-content: space-between;
+      font-size: 9px; color: #aaa;
+    }
+  </style>
+</head>
+<body>
+<div id="report-app"></div>
+<script>
+window.addEventListener('DOMContentLoaded', function() {
+  const D = window.__REPORT_DATA__;
+  if (!D) { document.body.innerHTML = '<p style="color:red;padding:40px">数据未注入</p>'; return; }
+
+  const fmt = (n) => n == null ? '—' : Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+  const pct = (n) => n == null ? '—' : (n > 0 ? '+' : '') + Number(n).toFixed(1) + '%';
+
+  const summary = D.summary || {};
+  const primaryCol = summary.primaryValueColumn || '';
+  const mainCat = summary.categoryColumn || '';
+  const stats = primaryCol && summary.columnStats ? summary.columnStats[primaryCol] : null;
+  const quality = D.dataQuality || {};
+  const monthly = D.monthlyGrowth || [];
+  const catBreakdowns = D.categoryBreakdowns || {};
+  const catData = mainCat && catBreakdowns[mainCat] ? catBreakdowns[mainCat] : [];
+  const distribution = D.distribution || {};
+
+  const app = document.getElementById('report-app');
+
+  // 计算最新增长率
+  const lastGrowth = monthly.length > 1 && monthly[monthly.length - 1].mom != null
+    ? monthly[monthly.length - 1].mom : null;
+
+  // ─── 页 1：高密度看板 ─────────────────────────────────────────────────────────
+  let page1 = `
+  <div class="page">
+    <div class="page-header">
+      <span class="page-header-title">📊 数据看板 · ${D.fileName || ''}</span>
+      <span class="page-header-sub">${D.generatedAt || ''}</span>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi-mini">
+        <div class="kpi-mini-val">${fmt(summary.totalRows)}</div>
+        <div class="kpi-mini-lbl">数据行数</div>
+      </div>
+      <div class="kpi-mini">
+        <div class="kpi-mini-val">${(D.headers || []).length}</div>
+        <div class="kpi-mini-lbl">字段数</div>
+      </div>
+      <div class="kpi-mini accent">
+        <div class="kpi-mini-val">${stats ? fmt(stats.sum) : '—'}</div>
+        <div class="kpi-mini-lbl">${primaryCol || '主指标'} 总计</div>
+      </div>
+      <div class="kpi-mini">
+        <div class="kpi-mini-val">${stats ? fmt(stats.avg) : '—'}</div>
+        <div class="kpi-mini-lbl">均值</div>
+      </div>
+      <div class="kpi-mini">
+        <div class="kpi-mini-val">${quality.score || '—'}</div>
+        <div class="kpi-mini-lbl">质量评分</div>
+      </div>
+      <div class="kpi-mini">
+        <div class="kpi-mini-val">${lastGrowth != null ? pct(lastGrowth) : '—'}</div>
+        <div class="kpi-mini-lbl">最新环比</div>
+      </div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-box">
+        <div class="chart-title">📈 月度趋势</div>
+        <div id="chart-trend" class="chart-canvas"></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">🥧 分类占比</div>
+        <div id="chart-pie" class="chart-canvas"></div>
+      </div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-box">
+        <div class="chart-title">📊 数据分布</div>
+        <div id="chart-dist" class="chart-canvas"></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">🏆 Top 5 分类</div>
+        <div id="chart-bar" class="chart-canvas"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>数据看板 · ${D.fileName || ''}</span>
+      <span>第 1 页</span>
+    </div>
+  </div>`;
+  app.innerHTML += page1;
+
+  // ─── 页 2：月度明细表（仅在有月度数据时显示）─────────────────────────────────────
+  if (monthly.length > 0) {
+    let page2 = `
+    <div class="page">
+      <div class="page-header">
+        <span class="page-header-title">📋 月度明细数据</span>
+        <span class="page-header-sub">第 2 页</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>周期</th>
+            <th>合计</th>
+            <th>均值</th>
+            <th>最大值</th>
+            <th>最小值</th>
+            <th>记录数</th>
+            <th>环比</th>
+            <th>同比</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    monthly.forEach(m => {
+      const momCls = m.mom > 0 ? 'up' : m.mom < 0 ? 'down' : '';
+      const yoyCls = m.yoy > 0 ? 'up' : m.yoy < 0 ? 'down' : '';
+      page2 += `
+          <tr>
+            <td>${m.period}</td>
+            <td>${fmt(m.sum)}</td>
+            <td>${fmt(m.avg)}</td>
+            <td>${fmt(m.max)}</td>
+            <td>${fmt(m.min)}</td>
+            <td>${m.count || '—'}</td>
+            <td class="${momCls}">${m.mom != null ? pct(m.mom) : '—'}</td>
+            <td class="${yoyCls}">${m.yoy != null ? pct(m.yoy) : '—'}</td>
+          </tr>`;
+    });
+
+    page2 += `
+        </tbody>
+      </table>
+      <div class="page-footer">
+        <span>数据看板 · ${D.fileName || ''}</span>
+        <span>第 2 页</span>
+      </div>
+    </div>`;
+    app.innerHTML += page2;
+  }
+
+  // ─── ECharts 初始化 ─────────────────────────────────────────────────────────
+  setTimeout(function() {
+    // 月度趋势
+    const trendEl = document.getElementById('chart-trend');
+    if (trendEl && monthly.length > 0) {
+      const chart = echarts.init(trendEl);
+      chart.setOption({
+        color: ['#4facfe'],
+        tooltip: { trigger: 'axis', textStyle: { fontSize: 10 } },
+        grid: { left: 50, right: 15, top: 20, bottom: 30 },
+        xAxis: { type: 'category', data: monthly.map(m => m.period), axisLabel: { fontSize: 9, rotate: 30 } },
+        yAxis: { type: 'value', axisLabel: { fontSize: 9 } },
+        series: [{ type: 'line', data: monthly.map(m => m.sum), smooth: true, lineStyle: { width: 2 }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(79,172,254,0.25)' }, { offset: 1, color: 'rgba(79,172,254,0.02)' }] } }, symbol: 'circle', symbolSize: 4 }]
+      });
+    }
+
+    // 分类饼图
+    const pieEl = document.getElementById('chart-pie');
+    if (pieEl && catData.length > 0) {
+      const chart = echarts.init(pieEl);
+      chart.setOption({
+        color: ['#1d2b64', '#4facfe', '#764ba2', '#43a047', '#fb8c00', '#e53935', '#8e24aa', '#00897b'],
+        tooltip: { trigger: 'item', formatter: '{b}: {d}%', textStyle: { fontSize: 10 } },
+        series: [{ type: 'pie', radius: ['30%', '60%'], label: { fontSize: 9 }, data: catData.slice(0, 8).map(c => ({ name: c.name, value: c.sum })) }]
+      });
+    } else if (pieEl) {
+      pieEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#aaa;font-size:11px;">暂无分类数据</div>';
+    }
+
+    // 分布直方图
+    const distEl = document.getElementById('chart-dist');
+    if (distEl && distribution.bins && distribution.bins.length > 0) {
+      const chart = echarts.init(distEl);
+      chart.setOption({
+        color: ['#4facfe'],
+        tooltip: { trigger: 'axis', textStyle: { fontSize: 10 } },
+        grid: { left: 45, right: 15, top: 20, bottom: 30 },
+        xAxis: { type: 'category', data: (distribution.labels || []).map((l, i) => i % 2 === 0 ? l : ''), axisLabel: { fontSize: 8, rotate: 30 } },
+        yAxis: { type: 'value', axisLabel: { fontSize: 9 } },
+        series: [{ type: 'bar', data: distribution.bins, barWidth: '60%', itemStyle: { borderRadius: [3, 3, 0, 0], color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: '#4facfe' }, { offset: 1, color: '#1d2b64' }] } } }]
+      });
+    } else if (distEl) {
+      distEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#aaa;font-size:11px;">暂无分布数据</div>';
+    }
+
+    // Top5 横向柱状图
+    const barEl = document.getElementById('chart-bar');
+    if (barEl && catData.length > 0) {
+      const chart = echarts.init(barEl);
+      const top5 = catData.slice(0, 5).reverse();
+      chart.setOption({
+        color: ['#1d2b64'],
+        tooltip: { trigger: 'axis', textStyle: { fontSize: 10 } },
+        grid: { left: 70, right: 20, top: 15, bottom: 20 },
+        xAxis: { type: 'value', axisLabel: { fontSize: 9 } },
+        yAxis: { type: 'category', data: top5.map(c => c.name.length > 6 ? c.name.slice(0, 6) + '…' : c.name), axisLabel: { fontSize: 9 } },
+        series: [{ type: 'bar', data: top5.map(c => c.sum), barWidth: 14, itemStyle: { borderRadius: [0, 4, 4, 0], color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#1d2b64' }, { offset: 1, color: '#4facfe' }] } } }]
+      });
+    } else if (barEl) {
+      barEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#aaa;font-size:11px;">暂无分类数据</div>';
+    }
+  }, 600);
+});
+</script>
+</body>
+</html>

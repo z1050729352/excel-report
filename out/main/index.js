@@ -466,14 +466,26 @@ function analyzeData(rows, headers, fileName) {
   result.insights = generateInsights$1(result);
   return result;
 }
-const DEFAULT_API_KEY = "e32a0d619785477b93dc4d97cecdb546.qgSYJKPZxttVcEay";
 const GLM_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const DEFAULT_MODEL = "glm-4-flash";
+let _envKey = "";
+try {
+  const envPath = path.join(process.cwd(), ".env");
+  const envContent = fs.readFileSync(envPath, "utf-8");
+  const match = envContent.match(/^GLM_API_KEY=(.+)$/m);
+  if (match) _envKey = match[1].trim();
+} catch (e) {
+}
 function getApiKey() {
-  return process.env.GLM_API_KEY || DEFAULT_API_KEY;
+  const key = process.env.GLM_API_KEY || _envKey;
+  if (!key) {
+    console.warn("[aiConfig] 未检测到 GLM_API_KEY，请在项目根目录 .env 文件中配置");
+  }
+  return key || "";
 }
 async function callGLM(messages, { apiKey, model = DEFAULT_MODEL, temperature = 0.4, maxTokens = 1500 } = {}) {
   const key = apiKey || getApiKey();
+  if (!key) throw new Error("未配置 API Key");
   const res = await fetch(GLM_ENDPOINT, {
     method: "POST",
     headers: {
@@ -594,6 +606,71 @@ ${JSON.stringify(summary, null, 2)}`
     return { success: false, error: err.message, insights: [] };
   }
 }
+async function generateReportPlan(analysisData, userRequest, { apiKey } = {}) {
+  const summary = buildDataSummary(analysisData);
+  const fullData = {
+    文件名: summary.文件名,
+    数据规模: summary.数据规模,
+    数据质量: summary.数据质量,
+    主指标: summary.主指标,
+    主指标统计: summary.主指标统计,
+    时间维度: summary.时间维度,
+    分类维度: summary.分类维度,
+    月度趋势: summary.月度趋势,
+    主分类Top10: summary.主分类Top10,
+    相关性: summary.相关性,
+    异常值数量: summary.异常值数量
+  };
+  const messages = [
+    {
+      role: "system",
+      content: `你是一位数据可视化工程师。你需要根据用户需求和数据，直接生成一个完整的 HTML 页面代码，用于渲染成 PDF 报告。
+
+技术要求：
+1. 使用 ECharts 5.x 绑图表（已通过 <script> 标签全局引入，直接用 echarts.init() 即可）
+2. 页面宽度 210mm（A4），用 class="page" 分页，每页 min-height: 297mm，page-break-after: always
+3. 支持 @media print 的 -webkit-print-color-adjust: exact
+4. 图表容器必须有明确的 width 和 height（如 width:100%; height:200px）
+5. 图表在 DOMContentLoaded 后用 setTimeout 600ms 初始化
+6. 所有数据直接硬编码在 JS 中（不需要外部数据注入）
+
+样式建议：
+- 背景白色，字体用 PingFang SC / Microsoft YaHei
+- 封面可用渐变背景
+- 标题用深蓝色 #1d2b64，强调色 #4facfe
+- 表格、卡片、图表自由组合
+
+输出要求：
+- 只输出 HTML 代码，从 <!DOCTYPE html> 开始到 </html> 结束
+- 不要 markdown 代码块包裹，直接输出纯 HTML
+- 根据用户需求决定页数、内容详略、图表类型
+- 用户说"一页"就只生成一页，说"详细"就多页`
+    },
+    {
+      role: "user",
+      content: `数据：${JSON.stringify(fullData)}
+
+用户需求：${userRequest}`
+    }
+  ];
+  try {
+    const content = await callGLM(messages, { apiKey, maxTokens: 4e3, temperature: 0.7 });
+    let html = content;
+    const htmlMatch = content.match(/<!DOCTYPE[\s\S]*<\/html>/i);
+    if (htmlMatch) {
+      html = htmlMatch[0];
+    } else {
+      html = content.replace(/^```html?\s*/i, "").replace(/\s*```\s*$/, "");
+    }
+    if (!html.includes("<html") && !html.includes("<body")) {
+      throw new Error("AI 未返回有效 HTML");
+    }
+    return { success: true, plan: { html } };
+  } catch (err) {
+    console.error("[aiAnalyzer] generateReportPlan 失败:", err.message);
+    return { success: false, error: err.message, plan: null };
+  }
+}
 async function askAboutData(analysisData, question, { apiKey } = {}) {
   const summary = buildDataSummary(analysisData);
   const messages = [
@@ -617,6 +694,85 @@ ${JSON.stringify(summary, null, 2)}
   } catch (err) {
     return { success: false, error: err.message, answer: "" };
   }
+}
+const TEMPLATES = {
+  executive: {
+    id: "executive",
+    name: "商务简报",
+    icon: "💼",
+    description: "适合给领导/客户汇报，突出核心指标和结论",
+    pages: "3-4 页",
+    sections: [
+      { type: "cover", style: "gradient" },
+      { type: "kpi_cards", metrics: ["sum", "avg", "count", "quality_score"] },
+      { type: "trend_chart", granularity: "monthly", showGrowth: true },
+      { type: "category_pie", topN: 5 },
+      { type: "ai_narrative", focus: "executive_summary" },
+      { type: "conclusion", showOutliers: false }
+    ],
+    colorScheme: "corporate_blue",
+    detailLevel: "brief"
+  },
+  detailed: {
+    id: "detailed",
+    name: "详细报告",
+    icon: "📊",
+    description: "完整分析报告，包含所有图表和明细数据",
+    pages: "8-9 页",
+    sections: [
+      { type: "cover", style: "gradient" },
+      { type: "overview_quality" },
+      { type: "statistics_full" },
+      { type: "distribution" },
+      { type: "trend_chart", granularity: "both", showGrowth: true },
+      { type: "category_analysis", showCross: true },
+      { type: "correlation" },
+      { type: "detail_tables" },
+      { type: "conclusion", showOutliers: true }
+    ],
+    colorScheme: "corporate_blue",
+    detailLevel: "full"
+  },
+  dashboard: {
+    id: "dashboard",
+    name: "数据看板",
+    icon: "📈",
+    description: "一页纸看全貌，高信息密度，适合打印张贴",
+    pages: "1-2 页",
+    sections: [
+      { type: "cover", style: "minimal" },
+      { type: "dashboard_grid" }
+    ],
+    colorScheme: "vibrant",
+    detailLevel: "compact"
+  },
+  minimal: {
+    id: "minimal",
+    name: "极简摘要",
+    icon: "📝",
+    description: "纯文字为主，快速浏览关键数字和结论",
+    pages: "2 页",
+    sections: [
+      { type: "cover", style: "clean" },
+      { type: "kpi_cards", metrics: ["sum", "avg", "mom"] },
+      { type: "ai_narrative", focus: "brief_summary" },
+      { type: "conclusion", showOutliers: false }
+    ],
+    colorScheme: "monochrome",
+    detailLevel: "minimal"
+  }
+};
+function getTemplateList() {
+  return Object.values(TEMPLATES).map((t) => ({
+    id: t.id,
+    name: t.name,
+    icon: t.icon,
+    description: t.description,
+    pages: t.pages
+  }));
+}
+function getTemplate(templateId) {
+  return TEMPLATES[templateId] || TEMPLATES.detailed;
 }
 let mainWindow = null;
 let reportWindow = null;
@@ -758,14 +914,49 @@ electron.ipcMain.handle("save-ai-summary", async (_e, { summary }) => {
   if (cachedAnalysisData) cachedAnalysisData.aiSummary = summary || "";
   return { success: true };
 });
-electron.ipcMain.handle("generate-pdf", async () => {
+electron.ipcMain.handle("get-report-templates", async () => {
+  return { success: true, templates: getTemplateList() };
+});
+electron.ipcMain.handle("ai-report-plan", async (_e, { userRequest, apiKey } = {}) => {
+  if (!cachedAnalysisData) return { success: false, error: "没有分析数据" };
+  mainWindow?.webContents.send("progress", { message: "AI 正在规划报告…", percent: 30 });
+  const result = await generateReportPlan(cachedAnalysisData, userRequest, { apiKey });
+  mainWindow?.webContents.send("progress", { message: result.success ? "报告规划完成" : "规划失败", percent: 100 });
+  return result;
+});
+electron.ipcMain.handle("generate-pdf", async (_e, { templateId, customPlan } = {}) => {
   const send = (message, percent) => mainWindow?.webContents.send("progress", { message, percent });
   const analysisData = cachedAnalysisData;
   if (!analysisData) return { success: false, error: "没有可用的分析数据" };
   try {
-    send("正在准备报告模板…", 15);
-    const templatePath = utils.is.dev ? path.join(process.cwd(), "src/renderer/src/report-template.html") : path.join(__dirname, "../renderer/report-template.html");
-    let html = fs.readFileSync(templatePath, "utf-8");
+    send("正在准备报告…", 15);
+    let reportConfig;
+    if (customPlan) {
+      reportConfig = { mode: "ai", ...customPlan };
+      console.log("[generate-pdf] 使用 AI 定制方案:", reportConfig.reportTitle, "章节:", JSON.stringify(reportConfig.sections?.map((s) => s.title)));
+    } else {
+      reportConfig = { mode: "template", ...getTemplate(templateId || "detailed") };
+      console.log("[generate-pdf] 使用预设模板:", reportConfig.id);
+    }
+    const reportData = { ...analysisData, __reportConfig__: reportConfig };
+    let html;
+    if (reportConfig.mode === "ai" && reportConfig.html) {
+      html = reportConfig.html;
+      console.log("[generate-pdf] 使用 AI 生成的 HTML，长度:", html.length);
+    } else {
+      const templateMap = {
+        detailed: "report-template.html",
+        executive: "report-executive.html",
+        dashboard: "report-dashboard.html",
+        minimal: "report-minimal.html"
+      };
+      const templateFile = templateMap[reportConfig.id] || "report-template.html";
+      const templatePath = utils.is.dev ? path.join(process.cwd(), "src/renderer/src", templateFile) : path.join(__dirname, "../renderer", templateFile);
+      console.log("[generate-pdf] 使用模板:", templateFile);
+      html = fs.readFileSync(templatePath, "utf-8");
+      html = html.replace("</head>", `<script>window.__REPORT_DATA__ = ${JSON.stringify(reportData)};<\/script>
+</head>`);
+    }
     const echartsPath = path.join(process.cwd(), "node_modules/echarts/dist/echarts.min.js");
     try {
       const echartsCode = fs.readFileSync(echartsPath, "utf-8");
@@ -776,10 +967,11 @@ electron.ipcMain.handle("generate-pdf", async () => {
     } catch (e) {
       console.warn("[generate-pdf] 无法内联 ECharts:", e.message);
     }
-    html = html.replace("</head>", `<script>window.__REPORT_DATA__ = ${JSON.stringify(analysisData)};<\/script>
-</head>`);
-    send("正在打开渲染窗口…", 30);
-    if (!reportWindow || reportWindow.isDestroyed()) createReportWindow();
+    send("正在打开渲染窗口…", 35);
+    if (reportWindow && !reportWindow.isDestroyed()) {
+      reportWindow.destroy();
+    }
+    createReportWindow();
     await Promise.race([
       new Promise((resolve, reject) => {
         reportWindow.webContents.once("did-finish-load", resolve);
@@ -788,11 +980,11 @@ electron.ipcMain.handle("generate-pdf", async () => {
       }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("页面加载超时（10s）")), 1e4))
     ]);
-    send("正在渲染图表（约3秒）…", 50);
+    send("正在渲染图表（约3秒）…", 55);
     await new Promise((r) => setTimeout(r, 1e3));
-    send("正在渲染图表…", 62);
+    send("正在渲染图表…", 68);
     await new Promise((r) => setTimeout(r, 1500));
-    send("正在导出 PDF…", 75);
+    send("正在导出 PDF…", 80);
     const pdfBuffer = await Promise.race([
       reportWindow.webContents.printToPDF({
         printBackground: true,
@@ -802,7 +994,7 @@ electron.ipcMain.handle("generate-pdf", async () => {
       }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("PDF 导出超时（30s）")), 3e4))
     ]);
-    send("请选择保存位置…", 88);
+    send("请选择保存位置…", 90);
     const defaultName = `分析报告_${analysisData.fileName?.replace(/\.[^.]+$/, "") || "report"}_${Date.now()}.pdf`;
     const { filePath: savePath, canceled } = await electron.dialog.showSaveDialog(mainWindow, {
       title: "保存 PDF 报告",
