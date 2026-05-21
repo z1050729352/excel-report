@@ -5,6 +5,9 @@
     "main": "./out/main/index.js",
     "author": "zhubaodong",
     "scripts": {
+        "predev": "node check-node-version.js",
+        "prebuild": "node check-node-version.js",
+        "prestart": "node check-node-version.js",
         "format": "prettier --write .",
         "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
         "start": "electron-vite preview",
@@ -14,10 +17,16 @@
         "build:mac": "npm run build && electron-builder --mac",
         "build:win": "npm run build && electron-builder --win"
     },
+    "engines": {
+        "node": ">=22.0.0"
+    },
     "dependencies": {
         "@electron-toolkit/preload": "^3.0.0",
         "@electron-toolkit/utils": "^3.0.0",
+        "better-sqlite3": "^12.10.0",
         "echarts": "^5.5.0",
+        "express": "^5.2.1",
+        "qrcode": "^1.5.4",
         "xlsx": "^0.18.5"
     },
     "devDependencies": {
