@@ -669,347 +669,36 @@ function generateOrderGuide(merchant, products, orderPlan) {
   return guide;
 }
 function generateReportHTML(orderGuide) {
-  const { merchantInfo, orderPlan, recommendations } = orderGuide;
-  const html = `
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>订货指导报告 - ${merchantInfo.customerName}</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      padding: 20px;
-      color: #333;
-    }
-    
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      overflow: hidden;
-    }
-    
-    .header {
-      background: linear-gradient(135deg, #1890FF 0%, #0050B3 100%);
-      color: white;
-      padding: 30px 20px;
-      text-align: center;
-    }
-    
-    .header h1 {
-      font-size: 24px;
-      margin-bottom: 10px;
-    }
-    
-    .header p {
-      font-size: 14px;
-      opacity: 0.9;
-    }
-    
-    .merchant-info {
-      padding: 20px;
-      background: #E6F7FF;
-      border-bottom: 1px solid #91D5FF;
-    }
-    
-    .merchant-info h2 {
-      font-size: 18px;
-      color: #0050B3;
-      margin-bottom: 15px;
-      display: flex;
-      align-items: center;
-    }
-    
-    .merchant-info h2::before {
-      content: "📋";
-      margin-right: 8px;
-    }
-    
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-    
-    .info-item {
-      display: flex;
-      flex-direction: column;
-    }
-    
-    .info-label {
-      font-size: 12px;
-      color: #8C8C8C;
-      margin-bottom: 4px;
-    }
-    
-    .info-value {
-      font-size: 14px;
-      color: #262626;
-      font-weight: 500;
-    }
-    
-    .summary {
-      padding: 20px;
-      background: #FFF7E6;
-      border-left: 4px solid #FA8C16;
-    }
-    
-    .summary h2 {
-      font-size: 18px;
-      color: #D46B08;
-      margin-bottom: 15px;
-      display: flex;
-      align-items: center;
-    }
-    
-    .summary h2::before {
-      content: "💰";
-      margin-right: 8px;
-    }
-    
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 15px;
-    }
-    
-    .summary-item {
-      background: white;
-      padding: 15px;
-      border-radius: 8px;
-      text-align: center;
-    }
-    
-    .summary-label {
-      font-size: 12px;
-      color: #8C8C8C;
-      margin-bottom: 8px;
-    }
-    
-    .summary-value {
-      font-size: 24px;
-      font-weight: bold;
-      color: #262626;
-    }
-    
-    .summary-value.profit {
-      color: #52C41A;
-    }
-    
-    .summary-value.cost {
-      color: #1890FF;
-    }
-    
-    .section {
-      padding: 20px;
-      border-bottom: 1px solid #F0F0F0;
-    }
-    
-    .section:last-child {
-      border-bottom: none;
-    }
-    
-    .section h2 {
-      font-size: 18px;
-      margin-bottom: 15px;
-      display: flex;
-      align-items: center;
-    }
-    
-    .section.success h2 {
-      color: #52C41A;
-    }
-    
-    .section.success h2::before {
-      content: "🔥";
-      margin-right: 8px;
-    }
-    
-    .section.warning h2 {
-      color: #FA8C16;
-    }
-    
-    .section.warning h2::before {
-      content: "⚠️";
-      margin-right: 8px;
-    }
-    
-    .section.info h2 {
-      color: #1890FF;
-    }
-    
-    .section.info h2::before {
-      content: "ℹ️";
-      margin-right: 8px;
-    }
-    
-    .product-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    
-    .product-card {
-      background: #FAFAFA;
-      border-radius: 8px;
-      padding: 15px;
-      border-left: 4px solid #52C41A;
-    }
-    
-    .product-card.warning {
-      border-left-color: #FA8C16;
-    }
-    
-    .product-name {
-      font-size: 16px;
-      font-weight: 500;
-      color: #262626;
-      margin-bottom: 8px;
-    }
-    
-    .product-details {
-      display: flex;
-      justify-content: space-between;
-      font-size: 14px;
-      color: #8C8C8C;
-    }
-    
-    .product-profit {
-      font-weight: bold;
-    }
-    
-    .product-profit.positive {
-      color: #52C41A;
-    }
-    
-    .product-profit.negative {
-      color: #FF4D4F;
-    }
-    
-    .footer {
-      padding: 20px;
-      text-align: center;
-      background: #FAFAFA;
-      color: #8C8C8C;
-      font-size: 12px;
-    }
-    
-    @media (max-width: 600px) {
-      body {
-        padding: 10px;
-      }
-      
-      .info-grid,
-      .summary-grid {
-        grid-template-columns: 1fr;
-      }
-      
-      .header h1 {
-        font-size: 20px;
-      }
-      
-      .summary-value {
-        font-size: 20px;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>📊 订货指导报告</h1>
-      <p>智能分析 · 利润最大化</p>
-    </div>
-    
-    <div class="merchant-info">
-      <h2>商户信息</h2>
-      <div class="info-grid">
-        <div class="info-item">
-          <div class="info-label">客户名称</div>
-          <div class="info-value">${merchantInfo.customerName || "-"}</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">许可证号</div>
-          <div class="info-value">${merchantInfo.licenseNo || "-"}</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">档位</div>
-          <div class="info-value">${merchantInfo.tier || "-"}</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">诚信等级</div>
-          <div class="info-value">${merchantInfo.creditLevel || "-"}</div>
-        </div>
+  const { merchantInfo, orderPlan } = orderGuide;
+  const profitRate = orderPlan.totalCost > 0 ? (orderPlan.totalProfit / orderPlan.totalCost * 100).toFixed(0) : 0;
+  const profitableHTML = orderPlan.profitable.map((item) => `
+    <div class="product-card">
+      <div class="product-icon">📦</div>
+      <div class="product-info">
+        <div class="product-name">${item.product_name}</div>
+        <div class="product-meta">建议 ${item.quantity || 1} 条 · 单价 ¥${item.cost_price || 0}</div>
+      </div>
+      <div class="product-right">
+        <div class="profit-badge positive">+${item.cost_price > 0 ? (item.profit / item.cost_price * 100).toFixed(0) : 0}%</div>
+        <div class="product-price">¥${(item.subtotal || item.cost_price || 0).toFixed(0)}</div>
       </div>
     </div>
-    
-    <div class="summary">
-      <h2>订货方案摘要</h2>
-      <div class="summary-grid">
-        <div class="summary-item">
-          <div class="summary-label">总预算</div>
-          <div class="summary-value">¥${merchantInfo.budget.toFixed(0)}</div>
-        </div>
-        <div class="summary-item">
-          <div class="summary-label">实际花费</div>
-          <div class="summary-value cost">¥${orderPlan.totalCost.toFixed(0)}</div>
-        </div>
-        <div class="summary-item">
-          <div class="summary-label">预计利润</div>
-          <div class="summary-value profit">¥${orderPlan.totalProfit.toFixed(0)}</div>
-        </div>
-        <div class="summary-item">
-          <div class="summary-label">利润率</div>
-          <div class="summary-value profit">${(orderPlan.totalProfit / orderPlan.totalCost * 100).toFixed(1)}%</div>
-        </div>
+  `).join("");
+  const necessaryHTML = orderPlan.necessary.map((item) => `
+    <div class="product-card warning">
+      <div class="product-icon">🛡️</div>
+      <div class="product-info">
+        <div class="product-name">${item.product_name}</div>
+        <div class="product-meta">建议 ${item.quantity || 1} 条 · 单价 ¥${item.cost_price || 0}</div>
+      </div>
+      <div class="product-right">
+        <div class="profit-badge negative">${item.cost_price > 0 ? (item.profit / item.cost_price * 100).toFixed(0) : 0}%</div>
+        <div class="product-price">¥${(item.subtotal || item.cost_price || 0).toFixed(0)}</div>
       </div>
     </div>
-    
-    ${recommendations.map((rec) => `
-      <div class="section ${rec.type}">
-        <h2>${rec.title}</h2>
-        <p style="margin-bottom: 15px; color: #595959;">${rec.content}</p>
-        ${rec.items ? `
-          <div class="product-list">
-            ${rec.items.map((item) => `
-              <div class="product-card ${rec.type === "warning" ? "warning" : ""}">
-                <div class="product-name">${item.name}</div>
-                <div class="product-details">
-                  <span>成本: ¥${item.costPrice.toFixed(2)}</span>
-                  <span>售价: ¥${item.sellPrice.toFixed(2)}</span>
-                  <span class="product-profit ${item.profit > 0 ? "positive" : "negative"}">
-                    利润: ${item.profit > 0 ? "+" : ""}¥${item.profit.toFixed(2)}
-                  </span>
-                </div>
-                ${item.reason ? `<div style="margin-top: 8px; font-size: 12px; color: #FA8C16;">💡 ${item.reason}</div>` : ""}
-              </div>
-            `).join("")}
-          </div>
-        ` : ""}
-      </div>
-    `).join("")}
-    
-    <div class="footer">
-      <p>报告生成时间：${(/* @__PURE__ */ new Date()).toLocaleString("zh-CN")}</p>
-      <p style="margin-top: 8px;">本报告由烟草订货管理系统自动生成</p>
-    </div>
-  </div>
-</body>
-</html>
-  `;
-  return html;
+  `).join("");
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>订烟指导报告</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#F5F7FA;padding-bottom:80px}.header{position:sticky;top:0;background:#fff;padding:12px 16px;display:flex;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,.06);z-index:100}.header-title{font-size:18px;font-weight:600;color:#1890FF}.icon-btn{width:36px;height:36px;border-radius:50%;background:#F5F7FA;display:flex;align-items:center;justify-content:center;cursor:pointer}.container{max-width:600px;margin:0 auto;padding:16px}.merchant-card{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;border:2px solid #1890FF}.merchant-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.merchant-name{font-size:20px;font-weight:600;margin-bottom:8px}.merchant-license{font-size:13px;color:#8C8C8C}.tier-badge{background:#1890FF;color:#fff;padding:6px 16px;border-radius:12px;font-size:13px;font-weight:500;flex-shrink:0}.merchant-meta{display:flex;gap:16px;font-size:13px;color:#595959}.budget-card{background:linear-gradient(135deg,#1890FF,#0050B3);border-radius:12px;padding:20px;margin-bottom:16px;color:#fff}.budget-row{display:flex;justify-content:space-between;margin-bottom:16px}.budget-value{font-size:28px;font-weight:600}.budget-profit{font-size:20px;color:#52C41A}.progress-bar{height:8px;background:rgba(255,255,255,.3);border-radius:4px;margin-bottom:8px}.progress-fill{height:100%;background:#52C41A;border-radius:4px;transition:width .3s}.section{margin-bottom:16px}.section-header{display:flex;justify-content:space-between;padding:0 4px;margin-bottom:12px}.section-title{font-size:16px;font-weight:600}.product-list{max-height:500px;overflow-y:auto;padding-right:4px}.product-list::-webkit-scrollbar{width:4px}.product-list::-webkit-scrollbar-thumb{background:#D9D9D9;border-radius:2px}.level-tag{background:#FF4D4F;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;margin-bottom:8px;display:inline-block}.level-tag.level2{background:#FA8C16}.product-card{background:#fff;border-radius:8px;padding:14px;margin-bottom:8px;display:flex;gap:12px;border-left:3px solid #52C41A}.product-card.warning{border-left-color:#FA8C16}.product-icon{width:40px;height:40px;background:#F0F9FF;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px}.product-info{flex:1}.product-name{font-size:14px;font-weight:500;margin-bottom:4px}.product-meta{font-size:12px;color:#8C8C8C}.product-right{text-align:right}.profit-badge{font-size:11px;padding:2px 6px;border-radius:4px;margin-bottom:4px;display:inline-block}.profit-badge.positive{background:#F6FFED;color:#52C41A}.profit-badge.negative{background:#FFF7E6;color:#FA8C16}.product-price{font-size:16px;font-weight:600}.analysis-card{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px}.analysis-title{font-size:16px;font-weight:600;margin-bottom:12px}.analysis-content{font-size:14px;line-height:1.8;color:#595959}.highlight{color:#1890FF;font-weight:600}.highlight.success{color:#52C41A}.back-to-top{position:fixed;bottom:90px;right:20px;width:48px;height:48px;background:#1890FF;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;box-shadow:0 4px 12px rgba(24,144,255,.4);opacity:0;transition:all .3s}.back-to-top.show{opacity:1}.footer-action{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:12px 16px;box-shadow:0 -2px 8px rgba(0,0,0,.06)}.action-btn{width:100%;max-width:600px;margin:0 auto;display:block;background:linear-gradient(135deg,#1890FF,#0050B3);color:#fff;border:none;border-radius:8px;padding:14px;font-size:16px;font-weight:600;cursor:pointer}@media print{body{background:#fff;padding-bottom:0}.header{position:static;box-shadow:none;page-break-after:avoid}.icon-btn{display:none}.product-list{max-height:none!important;overflow:visible!important}.product-card{page-break-inside:avoid;margin-bottom:6px}.back-to-top,.footer-action{display:none!important}.container{max-width:100%;padding:0}.section{page-break-inside:auto}.section-header{page-break-after:avoid}.level-tag{page-break-after:avoid}.merchant-card,.budget-card,.analysis-card{page-break-inside:avoid;box-shadow:none;margin-bottom:12px}.merchant-card{page-break-after:avoid}.budget-card{page-break-after:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body><div class="header"><div class="header-title">📊 订烟指导报告</div><div class="icon-btn" onclick="window.print()">🖨️</div></div><div class="container"><div class="merchant-card"><div class="merchant-header"><div><div class="merchant-name">${merchantInfo.customerName || merchantInfo.customer_name}</div><div class="merchant-license">许可证号：${merchantInfo.licenseNo || merchantInfo.license_no}</div></div><div class="tier-badge">${merchantInfo.tier}</div></div><div class="merchant-meta"><div>📍 ${merchantInfo.creditLevel || merchantInfo.credit_level || "A+"}</div><div>📅 2023 Q4</div></div></div><div class="budget-card"><div style="font-size:14px;margin-bottom:8px">利润最大化方案（推荐） 📈</div><div class="budget-row"><div><div style="font-size:13px;opacity:.9">建议投入预算</div><div class="budget-value">¥${orderPlan.totalCost.toFixed(0)}</div></div><div style="text-align:right"><div style="font-size:13px;opacity:.9">预估毛利润</div><div class="budget-profit">+¥${orderPlan.totalProfit.toFixed(0)}</div></div></div><div class="progress-bar"><div class="progress-fill" style="width:${profitRate}%"></div></div><div style="font-size:12px;text-align:right">预算共计利润率 ${profitRate}%</div></div>${profitableHTML ? `<div class="section"><div class="section-header"><div class="section-title">📋 订购建议清单</div><div style="font-size:13px;color:#1890FF">按毛利排序</div></div><div class="product-list"><div class="level-tag">LEVEL 1</div><div style="font-size:14px;font-weight:600;margin-bottom:12px">高利润货源（盈利本心）</div>${profitableHTML}</div></div>` : ""}${necessaryHTML ? `<div class="section"><div class="product-list"><div class="level-tag level2">LEVEL 2</div><div style="font-size:14px;font-weight:600;margin-bottom:12px">稳档保本货源（市场需求）</div>${necessaryHTML}</div></div>` : ""}<div class="analysis-card"><div class="analysis-title">🎯 策略专家分析</div><div class="analysis-content">本周期由于货源共可选 <span class="highlight">${orderPlan.profitable.length + orderPlan.necessary.length} 种</span>，系统优化后 <span class="highlight success">${orderPlan.profitable.length} 种</span> 纯利润货源，以及 <span class="highlight">${orderPlan.necessary.length} 种</span> 保档货源。预计上档率 <span class="highlight success">${profitRate}%</span>，预计利润 <span class="highlight success">¥${orderPlan.totalProfit.toFixed(0)}</span>。建议优先订购高利润货源，均衡订购保档货源。</div></div></div><div class="back-to-top" id="backToTop" onclick="scrollToTop()">↑</div><div class="footer-action"><button class="action-btn" onclick="window.print()">🖨️ 打印报告</button></div><script>window.addEventListener('scroll',function(){document.getElementById('backToTop').classList.toggle('show',window.scrollY>300)});function scrollToTop(){window.scrollTo({top:0,behavior:'smooth'})}<\/script></body></html>`;
 }
 let server = null;
 let serverPort = 3e3;
@@ -1199,8 +888,8 @@ function createWindow() {
     minHeight: 700,
     show: false,
     autoHideMenuBar: true,
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 18 } : void 0,
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 14, y: 18 },
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
       sandbox: false,

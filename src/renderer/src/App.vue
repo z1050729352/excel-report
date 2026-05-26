@@ -122,6 +122,7 @@ onMounted(() => {
   gap: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   margin-top: 10px;
+  -webkit-app-region: drag;
 }
 
 .logo-icon {

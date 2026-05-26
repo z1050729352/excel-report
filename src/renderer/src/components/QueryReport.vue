@@ -264,17 +264,21 @@ function showMessage(text, type = 'info') {
 
 .header {
   margin-bottom: 30px;
+  -webkit-app-region: drag;
+  cursor: move;
 }
 
 .header h1 {
   font-size: 28px;
   color: #262626;
   margin-bottom: 8px;
+  -webkit-user-select: none;
 }
 
 .header p {
   font-size: 14px;
   color: #8C8C8C;
+  -webkit-user-select: none;
 }
 
 .content {
