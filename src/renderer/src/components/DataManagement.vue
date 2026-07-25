@@ -86,6 +86,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { api } from '../api'
 
 const emit = defineEmits(['stats-updated'])
 
@@ -106,7 +107,7 @@ const clearing = ref(false)
 const message = ref(null)
 
 async function loadStats() {
-  const result = await window.api.getStats()
+  const result = await api.getStats()
   if (result.success) {
     stats.value = result.stats
   }
@@ -114,53 +115,35 @@ async function loadStats() {
 
 async function uploadFile(type) {
   try {
-    const filePath = await window.api.openFileDialog({
-      title: `选择${getTypeName(type)}`,
-      filters: [{ name: 'Excel 文件', extensions: ['xlsx', 'xls'] }]
-    })
-    
-    if (!filePath) return
-    
     showMessage('正在导入...', 'info')
-    
-    // 如果是更变表，先调试查看解析结果
-    if (type === 'changes') {
-      const debugResult = await window.api.debugChanges(filePath)
-      if (debugResult.success) {
-        console.log('=== 更变表解析结果 ===')
-        console.log('总数:', debugResult.changes.length)
-        console.log('详细数据:', debugResult.changes)
-        
-        // 统计各类型数量
-        const typeCount = {
-          删除: debugResult.changes.filter(c => c.change_type === '删除').length,
-          新增: debugResult.changes.filter(c => c.change_type === '新增').length,
-          更新: debugResult.changes.filter(c => c.change_type === '更新').length
-        }
-        console.log('类型统计:', typeCount)
-        
-        // 显示每一条的详细信息
-        debugResult.changes.forEach((change, index) => {
-          console.log(`第 ${index + 1} 条:`, {
-            类型: change.change_type,
-            许可证号: change.license_no,
-            商户名称: change.merchant_data?.customer_name || '无'
-          })
-        })
+    const result = await api.pickAndImport(type)
+
+    if (result.canceled) {
+      message.value = null
+      return
+    }
+
+    if (type === 'changes' && result.success && Array.isArray(result.changes)) {
+      console.log('=== 更变表解析结果 ===')
+      console.log('总数:', result.changes.length)
+      console.log('详细数据:', result.changes)
+      const typeCount = {
+        删除: result.changes.filter((c) => c.change_type === '删除').length,
+        新增: result.changes.filter((c) => c.change_type === '新增').length,
+        更新: result.changes.filter((c) => c.change_type === '更新').length
       }
+      console.log('类型统计:', typeCount)
+      result.changes.forEach((change, index) => {
+        console.log(`第 ${index + 1} 条:`, {
+          类型: change.change_type,
+          许可证号: change.license_no,
+          商户名称: change.merchant_data?.customer_name || '无'
+        })
+      })
     }
-    
-    let result
-    if (type === 'merchants') {
-      result = await window.api.importMerchants(filePath)
-    } else if (type === 'products') {
-      result = await window.api.importProducts(filePath)
-    } else if (type === 'changes') {
-      result = await window.api.importChanges(filePath)
-    }
-    
+
     if (result.success) {
-      files.value[type] = filePath.split(/[\\/]/).pop()
+      files.value[type] = result.fileName || '已导入'
       showMessage(`✓ 成功导入 ${result.count} 条数据`, 'success')
       await loadStats()
       emit('stats-updated')
@@ -177,10 +160,10 @@ async function applyChanges() {
     showMessage('没有待应用的更变', 'warning')
     return
   }
-  
+
   applying.value = true
   try {
-    const result = await window.api.applyChanges()
+    const result = await api.applyChanges()
     if (result.success) {
       showMessage(`✓ 成功应用 ${result.count} 条更变`, 'success')
       await loadStats()
@@ -199,10 +182,10 @@ async function clearData() {
   if (!confirm('确定要清空所有数据吗？此操作不可恢复！')) {
     return
   }
-  
+
   clearing.value = true
   try {
-    const result = await window.api.clearAllData()
+    const result = await api.clearAllData()
     if (result.success) {
       files.value = { merchants: null, products: null, changes: null }
       showMessage('✓ 所有数据已清空', 'success')
@@ -216,15 +199,6 @@ async function clearData() {
   } finally {
     clearing.value = false
   }
-}
-
-function getTypeName(type) {
-  const names = {
-    merchants: '商户信息表',
-    products: '货源表',
-    changes: '信息更变表'
-  }
-  return names[type] || ''
 }
 
 function showMessage(text, type = 'info') {

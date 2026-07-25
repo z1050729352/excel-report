@@ -154,6 +154,7 @@
 <script setup>
 import { ref, nextTick } from 'vue'
 import QRCode from 'qrcode'
+import { api } from '../api'
 
 const licenseNo = ref('')
 const merchant = ref(null)
@@ -172,13 +173,13 @@ async function queryMerchant() {
     showMessage('请输入许可证号', 'warning')
     return
   }
-  
+
   querying.value = true
   orderGuide.value = null
   shareLink.value = null
-  
+
   try {
-    const result = await window.api.queryMerchant(licenseNo.value.trim())
+    const result = await api.queryMerchant(licenseNo.value.trim())
     if (result.success) {
       merchant.value = result.merchant
       productCount.value = result.productCount
@@ -197,7 +198,7 @@ async function queryMerchant() {
 async function generateReport() {
   generating.value = true
   try {
-    const result = await window.api.generateOrderPlan({ licenseNo: licenseNo.value.trim() })
+    const result = await api.generateOrderPlan({ licenseNo: licenseNo.value.trim() })
     if (result.success) {
       orderGuide.value = result.orderGuide
       showMessage('✓ 报告生成成功', 'success')
@@ -214,12 +215,11 @@ async function generateReport() {
 async function shareReport() {
   sharing.value = true
   try {
-    const result = await window.api.shareReport({ licenseNo: licenseNo.value.trim() })
+    const result = await api.shareReport({ licenseNo: licenseNo.value.trim() })
     if (result.success) {
       shareLink.value = result
       showMessage('✓ 链接生成成功', 'success')
-      
-      // 生成二维码
+
       await nextTick()
       if (qrcodeCanvas.value) {
         await QRCode.toCanvas(qrcodeCanvas.value, result.networkLink, {

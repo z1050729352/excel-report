@@ -1,9 +1,13 @@
 # Dependencies
 node_modules/
 
+# Local node-gyp Python env (setuptools for native builds)
+.node-gyp-python/
+
 # Build output
 out/
 dist/
+dist-web/
 
 # Environment & secrets
 .env

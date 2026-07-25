@@ -1,5 +1,5 @@
 <template>
-  <div class="app">
+  <div class="app" :class="{ 'is-desktop': isElectron, 'is-web': !isElectron }">
     <!-- 左侧导航栏 -->
     <aside class="sidebar">
       <div class="logo">
@@ -75,6 +75,7 @@ import { ref, onMounted } from 'vue'
 import DataManagement from './components/DataManagement.vue'
 import QueryReport from './components/QueryReport.vue'
 import ServerManagement from './components/ServerManagement.vue'
+import { api, isElectron } from './api'
 
 const currentView = ref('data')
 const stats = ref({
@@ -84,15 +85,20 @@ const stats = ref({
 })
 
 async function loadStats() {
-  const result = await window.api.getStats()
-  if (result.success) {
-    stats.value = result.stats
+  try {
+    const result = await api.getStats()
+    if (result.success) {
+      stats.value = result.stats
+    }
+  } catch (err) {
+    console.error('加载统计失败:', err)
   }
 }
 
 onMounted(() => {
+  document.documentElement.classList.toggle('is-desktop', isElectron)
+  document.documentElement.classList.toggle('is-web', !isElectron)
   loadStats()
-  // 每 5 秒刷新一次统计
   setInterval(loadStats, 5000)
 })
 </script>
@@ -116,11 +122,15 @@ onMounted(() => {
 }
 
 .logo {
-  padding: 50px 20px 20px 20px;
+  padding: 20px;
   display: flex;
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.app.is-desktop .logo {
+  padding: 50px 20px 20px 20px;
   margin-top: 10px;
   -webkit-app-region: drag;
 }
@@ -211,5 +221,55 @@ onMounted(() => {
   flex: 1;
   overflow-y: auto;
   background: #F0F2F5;
+}
+
+@media (max-width: 768px) {
+  .app {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    order: 2;
+    flex-direction: row;
+    align-items: stretch;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .logo,
+  .stats {
+    display: none;
+  }
+
+  .nav {
+    display: flex;
+    flex: 1;
+    padding: 0;
+  }
+
+  .nav-item {
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 10px 8px;
+    border-left: none;
+    border-top: 3px solid transparent;
+    text-align: center;
+  }
+
+  .nav-item.active {
+    border-left-color: transparent;
+    border-top-color: #52C41A;
+  }
+
+  .nav-label {
+    font-size: 12px;
+  }
+
+  .main-content {
+    order: 1;
+    min-height: 0;
+  }
 }
 </style>

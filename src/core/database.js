@@ -4,32 +4,38 @@
  */
 
 import Database from 'better-sqlite3'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 
 let db = null
 
 /**
  * 初始化数据库
+ * @param {{ dbPath?: string, dbDir?: string }} [options]
  */
-export function initDatabase() {
-  // 使用项目目录下的 data 文件夹
-  const dbDir = join(process.cwd(), 'data')
-  
-  // 确保目录存在
-  if (!existsSync(dbDir)) {
-    mkdirSync(dbDir, { recursive: true })
+export function initDatabase(options = {}) {
+  let dbPath = options.dbPath
+
+  if (!dbPath) {
+    const dbDir = options.dbDir || join(process.cwd(), 'data')
+    if (!existsSync(dbDir)) {
+      mkdirSync(dbDir, { recursive: true })
+    }
+    dbPath = join(dbDir, 'tobacco.db')
+  } else {
+    const dir = dirname(dbPath)
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
+    }
   }
-  
-  const dbPath = join(dbDir, 'tobacco.db')
+
   console.log('[Database] 数据库路径:', dbPath)
-  
+
   db = new Database(dbPath)
-  db.pragma('journal_mode = WAL') // 性能优化
-  
-  // 创建表
+  db.pragma('journal_mode = WAL')
+
   createTables()
-  
+
   return db
 }
 

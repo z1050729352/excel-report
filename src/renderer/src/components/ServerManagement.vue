@@ -2,7 +2,7 @@
   <div class="server-management">
     <div class="header">
       <h1>📱 分享服务</h1>
-      <p>启动本地服务器，生成报告链接供手机端访问</p>
+      <p>{{ isElectron ? '启动本地服务器，生成报告链接供手机端访问' : 'Web 服务常驻运行，可直接生成报告链接供手机访问' }}</p>
     </div>
     
     <div class="content">
@@ -12,14 +12,20 @@
           <h2>服务器状态</h2>
           <div class="status-indicator" :class="{ running: serverStatus.running }">
             <span class="dot"></span>
-            <span class="text">{{ serverStatus.running ? '运行中' : '已停止' }}</span>
+            <span class="text">
+              {{ serverStatus.alwaysOn ? '常驻运行' : (serverStatus.running ? '运行中' : '已停止') }}
+            </span>
           </div>
         </div>
         
         <div v-if="serverStatus.running" class="server-info">
-          <div class="info-row">
+          <div class="info-row" v-if="!serverStatus.alwaysOn">
             <span class="label">端口号:</span>
             <span class="value">{{ serverStatus.port }}</span>
+          </div>
+          <div class="info-row" v-else>
+            <span class="label">访问地址:</span>
+            <span class="value">{{ currentOrigin }}</span>
           </div>
           <div class="info-row">
             <span class="label">活跃报告:</span>
@@ -27,7 +33,7 @@
           </div>
         </div>
         
-        <div class="action-buttons">
+        <div class="action-buttons" v-if="!serverStatus.alwaysOn">
           <button 
             v-if="!serverStatus.running" 
             class="btn-start" 
@@ -45,17 +51,20 @@
             {{ stopping ? '停止中...' : '⏹ 停止服务器' }}
           </button>
         </div>
+        <div v-else class="web-hint">
+          Web 模式下服务随页面一起运行，无需手动启停。
+        </div>
       </div>
       
       <!-- 使用说明 -->
       <div class="guide-card">
         <h2>📖 使用说明</h2>
         <ol class="guide-list">
-          <li>点击"启动服务器"按钮</li>
+          <li v-if="!serverStatus.alwaysOn">点击"启动服务器"按钮</li>
           <li>在"查询报告"页面输入许可证号</li>
           <li>点击"导出链接"生成分享链接</li>
           <li>手机扫码或复制链接即可查看报告</li>
-          <li>报告链接有效期为 5 分钟</li>
+          <li>报告链接有效期为 24 小时</li>
         </ol>
       </div>
       
@@ -69,9 +78,11 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { api, isElectron } from '../api'
 
 const serverStatus = ref({
   running: false,
+  alwaysOn: false,
   port: 3000,
   reportCount: 0
 })
@@ -79,12 +90,13 @@ const serverStatus = ref({
 const starting = ref(false)
 const stopping = ref(false)
 const message = ref(null)
+const currentOrigin = typeof window !== 'undefined' ? window.location.origin : ''
 
 let statusInterval = null
 
 async function loadStatus() {
   try {
-    const status = await window.api.getServerStatus()
+    const status = await api.getServerStatus()
     serverStatus.value = status
   } catch (err) {
     console.error('获取服务器状态失败:', err)
@@ -94,7 +106,7 @@ async function loadStatus() {
 async function startServer() {
   starting.value = true
   try {
-    const result = await window.api.startServer()
+    const result = await api.startServer()
     if (result.success) {
       showMessage('✓ 服务器已启动', 'success')
       await loadStatus()
@@ -111,7 +123,7 @@ async function startServer() {
 async function stopServer() {
   stopping.value = true
   try {
-    const result = await window.api.stopServer()
+    const result = await api.stopServer()
     if (result.success) {
       showMessage('✓ 服务器已停止', 'success')
       await loadStatus()
@@ -134,7 +146,6 @@ function showMessage(text, type = 'info') {
 
 onMounted(() => {
   loadStatus()
-  // 每 2 秒刷新状态
   statusInterval = setInterval(loadStatus, 2000)
 })
 
@@ -148,29 +159,22 @@ onUnmounted(() => {
 <style scoped>
 .server-management {
   padding: 30px;
+  max-width: 800px;
 }
 
 .header {
   margin-bottom: 30px;
-  -webkit-app-region: drag;
-  cursor: move;
 }
 
 .header h1 {
   font-size: 28px;
   color: #262626;
   margin-bottom: 8px;
-  -webkit-user-select: none;
 }
 
 .header p {
-  font-size: 14px;
   color: #8C8C8C;
-  -webkit-user-select: none;
-}
-
-.content {
-  max-width: 800px;
+  font-size: 14px;
 }
 
 .status-card,
@@ -178,8 +182,8 @@ onUnmounted(() => {
   background: white;
   border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .status-header {
@@ -190,7 +194,7 @@ onUnmounted(() => {
 }
 
 .status-header h2 {
-  font-size: 20px;
+  font-size: 18px;
   color: #262626;
 }
 
@@ -198,51 +202,39 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 16px;
-  border-radius: 16px;
-  background: #F0F0F0;
-  color: #8C8C8C;
   font-size: 14px;
+  color: #8C8C8C;
 }
 
 .status-indicator.running {
-  background: #F6FFED;
   color: #52C41A;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
+.status-indicator .dot {
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: #8C8C8C;
+  background: #D9D9D9;
 }
 
 .status-indicator.running .dot {
   background: #52C41A;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.2);
 }
 
 .server-info {
-  background: #FAFAFA;
-  padding: 16px;
-  border-radius: 8px;
   margin-bottom: 20px;
 }
 
 .info-row {
   display: flex;
   justify-content: space-between;
-  padding: 8px 0;
-  font-size: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid #F0F0F0;
+}
+
+.info-row:last-child {
+  border-bottom: none;
 }
 
 .info-row .label {
@@ -262,7 +254,7 @@ onUnmounted(() => {
 .btn-start,
 .btn-stop {
   flex: 1;
-  padding: 12px 24px;
+  padding: 12px 20px;
   border: none;
   border-radius: 8px;
   font-size: 15px;
@@ -272,50 +264,55 @@ onUnmounted(() => {
 }
 
 .btn-start {
-  background: #52C41A;
+  background: linear-gradient(135deg, #52C41A, #389E0D);
   color: white;
 }
 
 .btn-start:hover:not(:disabled) {
-  background: #73D13D;
+  opacity: 0.9;
 }
 
 .btn-stop {
-  background: #FF4D4F;
-  color: white;
+  background: #FFF1F0;
+  color: #FF4D4F;
+  border: 1px solid #FFCCC7;
 }
 
 .btn-stop:hover:not(:disabled) {
-  background: #FF7875;
+  background: #FFCCC7;
 }
 
 .btn-start:disabled,
 .btn-stop:disabled {
-  background: #D9D9D9;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
+.web-hint {
+  padding: 12px 16px;
+  background: #E6F7FF;
+  border-radius: 8px;
+  color: #1890FF;
+  font-size: 14px;
+}
+
 .guide-card h2 {
-  font-size: 20px;
-  color: #262626;
+  font-size: 18px;
   margin-bottom: 16px;
+  color: #262626;
 }
 
 .guide-list {
   padding-left: 20px;
-  line-height: 2;
   color: #595959;
-}
-
-.guide-list li {
-  font-size: 14px;
+  line-height: 2;
 }
 
 .message {
-  padding: 12px 20px;
-  border-radius: 6px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-top: 16px;
   font-size: 14px;
-  animation: slideIn 0.3s;
 }
 
 .message.success {
@@ -325,19 +322,14 @@ onUnmounted(() => {
 }
 
 .message.error {
-  background: #FFF2F0;
+  background: #FFF1F0;
   color: #FF4D4F;
-  border: 1px solid #FFCCC7;
+  border: 1px solid #FFA39E;
 }
 
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.message.info {
+  background: #E6F7FF;
+  color: #1890FF;
+  border: 1px solid #91D5FF;
 }
 </style>
