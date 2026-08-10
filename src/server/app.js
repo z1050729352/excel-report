@@ -34,6 +34,19 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 }
 })
 
+/** multer/busboy 常把 UTF-8 中文文件名按 latin1 解析，导致乱码 */
+function decodeUploadFilename(name) {
+  if (!name) return 'upload.xlsx'
+  if (/[\u4e00-\u9fff]/.test(name)) return name
+  try {
+    const decoded = Buffer.from(name, 'latin1').toString('utf8')
+    if (/[\u4e00-\u9fff]/.test(decoded)) return decoded
+  } catch {
+    /* ignore */
+  }
+  return name
+}
+
 const REPORT_NOT_FOUND_HTML = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -152,7 +165,7 @@ export function createApp(options = {}) {
       }
 
       const buffer = req.file.buffer
-      const fileName = req.file.originalname || 'upload.xlsx'
+      const fileName = decodeUploadFilename(req.file.originalname)
       let count = 0
       let changes = null
 
