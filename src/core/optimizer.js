@@ -1,108 +1,126 @@
 /**
  * 订货优化算法
- * 在有限预算下，实现利润最大化
+ * 有界背包问题：按性价比(每元进价的毛利)降序贪心
+ * 约束：预算 + 单品配额上限 + 段位总量上限
  */
 
 /**
- * 订货优化算法（贪心算法）
- * @param {Array} products - 可用货源列表
- * @param {Number} budget - 预算
- * @param {String} tier - 当前档位
+ * @param {Array} products 可订货源，每项：
+ *   { product_name, cost_price, sell_price, cap, seg }
+ *   - cost_price 进货价/条
+ *   - sell_price 零售价/条
+ *   - cap        该档位单品上限（条）
+ *   - seg        段位标识 '5段'/'6段'/'7段' 或 null
+ * @param {number} budget 预算（≥3000）
+ * @param {string|number} tier 档位（透传，用于摘要）
+ * @param {Object} segCaps 段位总量上限 { '5段': n, ... }
  * @returns {Object} 订货方案
  */
-export function optimizeOrder(products, budget, tier) {
-  if (!products || products.length === 0) {
+export function optimizeOrder(products, budget, tier, segCaps = {}) {
+  const safeBudget = Number(budget) || 0
+  if (!products || products.length === 0 || safeBudget <= 0) {
     return {
+      items: [],
       profitable: [],
       necessary: [],
       totalCost: 0,
       totalProfit: 0,
-      remainingBudget: budget,
-      summary: '没有可用货源'
+      remainingBudget: safeBudget,
+      marginRate: 0,
+      summary: '没有可用货源或预算无效'
     }
   }
-  
-  // 1. 分类：赚钱的 vs 赔钱的
-  const profitable = products.filter(p => p.profit > 0).sort((a, b) => b.profit - a.profit)
-  const unprofitable = products.filter(p => p.profit <= 0).sort((a, b) => a.profit - b.profit) // 亏损少的优先
-  
-  // 2. 贪心算法：优先选利润高的
-  const selected = []
-  let remainingBudget = budget
+
+  // 1. 计算性价比，过滤无效项（进价>0、有毛利、有配额）
+  const candidates = products
+    .map((p) => {
+      const cost = Number(p.cost_price) || 0
+      const retail = Number(p.sell_price) || 0
+      const cap = Number(p.cap) || 0
+      const profitPer = +(retail - cost).toFixed(2)
+      return {
+        ...p,
+        cost_price: cost,
+        sell_price: retail,
+        cap,
+        profitPer,
+        rho: cost > 0 ? profitPer / cost : -Infinity
+      }
+    })
+    .filter((p) => p.cost_price > 0 && p.profitPer > 0 && p.cap > 0)
+    // 2. 按性价比降序，相同则按单条毛利降序
+    .sort((a, b) => b.rho - a.rho || b.profitPer - a.profitPer)
+
+  // 3. 贪心分配
+  let spent = 0
   let totalProfit = 0
-  
-  for (const product of profitable) {
-    if (remainingBudget >= product.cost_price) {
-      selected.push({
-        ...product,
-        quantity: 1, // 简化：每种货源订 1 单位
-        subtotal: product.cost_price,
-        profit: product.profit
-      })
-      remainingBudget -= product.cost_price
-      totalProfit += product.profit
+  const items = []
+  const segUsed = {}
+
+  for (const p of candidates) {
+    if (spent >= safeBudget) break
+
+    let cap = p.cap
+    if (p.seg) {
+      const left = (Number(segCaps[p.seg]) || 0) - (segUsed[p.seg] || 0)
+      cap = Math.min(cap, left)
     }
+    if (cap <= 0) continue
+
+    const affordable = Math.floor((safeBudget - spent) / p.cost_price)
+    const qty = Math.min(cap, affordable)
+    if (qty <= 0) continue
+
+    spent += qty * p.cost_price
+    totalProfit += qty * p.profitPer
+    if (p.seg) segUsed[p.seg] = (segUsed[p.seg] || 0) + qty
+
+    items.push({
+      product_name: p.product_name,
+      product_code: p.product_code,
+      cost_price: p.cost_price,
+      sell_price: p.sell_price,
+      seg: p.seg || null,
+      profit: p.profitPer,
+      quantity: qty,
+      subtotal: +(qty * p.cost_price).toFixed(2),
+      subtotalProfit: +(qty * p.profitPer).toFixed(2)
+    })
   }
-  
-  // 3. 保档位策略：如果还有预算，加一些必订的（即使亏损）
-  // 简化逻辑：选择亏损最少的几个
-  const necessary = []
-  const necessaryCount = Math.min(3, unprofitable.length) // 最多选 3 个
-  
-  for (let i = 0; i < necessaryCount && i < unprofitable.length; i++) {
-    const product = unprofitable[i]
-    if (remainingBudget >= product.cost_price) {
-      necessary.push({
-        ...product,
-        quantity: 1,
-        subtotal: product.cost_price,
-        profit: product.profit,
-        reason: '保档位必订'
-      })
-      remainingBudget -= product.cost_price
-      totalProfit += product.profit
-    }
-  }
-  
-  const totalCost = budget - remainingBudget
-  
+
+  const totalCost = +spent.toFixed(2)
+  totalProfit = +totalProfit.toFixed(2)
+  const marginRate = totalCost > 0 ? +((totalProfit / totalCost) * 100).toFixed(2) : 0
+
   return {
-    profitable: selected,
-    necessary: necessary,
-    totalCost: totalCost,
-    totalProfit: totalProfit,
-    remainingBudget: remainingBudget,
-    summary: generateSummary(selected, necessary, totalCost, totalProfit, budget)
+    items,
+    // 兼容下游：全部计入 profitable（都是正毛利），necessary 保留空数组
+    profitable: items,
+    necessary: [],
+    totalCost,
+    totalProfit,
+    remainingBudget: +(safeBudget - spent).toFixed(2),
+    marginRate,
+    summary: buildSummary(items, totalCost, totalProfit, safeBudget, marginRate)
   }
 }
 
-/**
- * 生成订货方案摘要
- */
-function generateSummary(profitable, necessary, totalCost, totalProfit, budget) {
-  const profitableCount = profitable.length
-  const necessaryCount = necessary.length
-  const totalCount = profitableCount + necessaryCount
-  
-  let summary = `本次订货方案：\n`
-  summary += `- 总预算：¥${budget.toFixed(2)}\n`
-  summary += `- 实际花费：¥${totalCost.toFixed(2)}\n`
-  summary += `- 预计利润：¥${totalProfit.toFixed(2)}\n`
-  summary += `- 利润率：${((totalProfit / totalCost) * 100).toFixed(1)}%\n\n`
-  
-  summary += `订货明细：\n`
-  summary += `- 优先订购（赚钱）：${profitableCount} 种\n`
-  summary += `- 保档必订（亏损）：${necessaryCount} 种\n`
-  summary += `- 合计：${totalCount} 种货源\n`
-  
-  return summary
+function buildSummary(items, totalCost, totalProfit, budget, marginRate) {
+  return [
+    `本次订货方案：`,
+    `- 总预算：¥${budget.toFixed(2)}`,
+    `- 实际花费：¥${totalCost.toFixed(2)}`,
+    `- 预计毛利：¥${totalProfit.toFixed(2)}`,
+    `- 综合利润率：${marginRate}%`,
+    `- 入选品种：${items.length} 种`
+  ].join('\n')
 }
 
 /**
- * 生成订货指导建议
+ * 生成订货指导（供报告渲染）
  */
 export function generateOrderGuide(merchant, products, orderPlan) {
-  const guide = {
+  return {
     merchantInfo: {
       customerName: merchant.customer_name,
       licenseNo: merchant.license_no,
@@ -110,62 +128,34 @@ export function generateOrderGuide(merchant, products, orderPlan) {
       creditLevel: merchant.credit_level,
       budget: merchant.budget
     },
-    orderPlan: orderPlan,
-    recommendations: []
+    orderPlan,
+    recommendations: buildRecommendations(merchant, orderPlan)
   }
-  
-  // 生成建议
-  if (orderPlan.profitable.length > 0) {
-    guide.recommendations.push({
-      type: 'success',
-      title: '优先订购建议',
-      content: `以下 ${orderPlan.profitable.length} 种货源利润较高，建议优先订购：`,
-      items: orderPlan.profitable.map(p => ({
-        name: p.product_name,
-        profit: p.profit,
-        costPrice: p.cost_price,
-        sellPrice: p.sell_price
-      }))
-    })
-  }
-  
-  if (orderPlan.necessary.length > 0) {
-    guide.recommendations.push({
-      type: 'warning',
-      title: '保档位必订',
-      content: `为了保持 ${merchant.tier} 档位，建议订购以下货源（虽然利润较低）：`,
-      items: orderPlan.necessary.map(p => ({
-        name: p.product_name,
-        profit: p.profit,
-        costPrice: p.cost_price,
-        sellPrice: p.sell_price,
-        reason: p.reason
-      }))
-    })
-  }
-  
-  if (orderPlan.remainingBudget > 0) {
-    guide.recommendations.push({
-      type: 'info',
-      title: '预算结余',
-      content: `本次订货后还剩余 ¥${orderPlan.remainingBudget.toFixed(2)}，可用于下次订货或应急周转。`
-    })
-  }
-  
-  return guide
 }
 
-/**
- * 计算档位保持所需最低订货量
- * （简化版：根据档位返回建议订货金额）
- */
-export function calculateMinOrderForTier(tier) {
-  const tierRequirements = {
-    'A档': 50000,
-    'B档': 30000,
-    'C档': 20000,
-    'D档': 10000
+function buildRecommendations(merchant, orderPlan) {
+  const recs = []
+  if (orderPlan.items.length > 0) {
+    recs.push({
+      type: 'success',
+      title: '利润最大化订购建议',
+      content: `在 ¥${Number(merchant.budget).toFixed(0)} 预算内，推荐订购以下 ${orderPlan.items.length} 种货源，预计毛利 ¥${orderPlan.totalProfit.toFixed(0)}（利润率 ${orderPlan.marginRate}%）：`,
+      items: orderPlan.items.map((p) => ({
+        name: p.product_name,
+        quantity: p.quantity,
+        costPrice: p.cost_price,
+        sellPrice: p.sell_price,
+        profit: p.profit,
+        subtotalProfit: p.subtotalProfit
+      }))
+    })
   }
-  
-  return tierRequirements[tier] || 10000
+  if (orderPlan.remainingBudget > 0) {
+    recs.push({
+      type: 'info',
+      title: '预算结余',
+      content: `本次订货后剩余 ¥${orderPlan.remainingBudget.toFixed(2)}（不足以再订购任一款烟），可留作下期周转。`
+    })
+  }
+  return recs
 }

@@ -6,6 +6,7 @@
 import Database from 'better-sqlite3'
 import { join, dirname } from 'path'
 import { existsSync, mkdirSync } from 'fs'
+import { normalizeTier } from './tierUtils.js'
 
 let db = null
 
@@ -61,20 +62,32 @@ function createTables() {
     )
   `)
   
-  // 货源表
+  // 货源表：cost/retail + 各档位配额矩阵(caps_json) + 段位(seg)
   db.exec(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_code TEXT UNIQUE NOT NULL,
       product_name TEXT NOT NULL,
-      tier_required TEXT,
+      mode TEXT,
+      seg TEXT,
       cost_price REAL DEFAULT 0,
       sell_price REAL DEFAULT 0,
       profit REAL DEFAULT 0,
-      category TEXT,
+      caps_json TEXT,
       unit TEXT DEFAULT '条',
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // 段位总量上限表：每个段位在每个档位下的总量上限
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS seg_caps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seg TEXT NOT NULL,
+      tier INTEGER NOT NULL,
+      cap INTEGER DEFAULT 0,
+      UNIQUE(seg, tier)
     )
   `)
   
@@ -110,6 +123,7 @@ export function clearAllData() {
   db.exec('DELETE FROM merchants')
   db.exec('DELETE FROM products')
   db.exec('DELETE FROM changes')
+  db.exec('DELETE FROM seg_caps')
   console.log('[Database] 所有数据已清空')
 }
 
@@ -144,33 +158,62 @@ export function insertMerchants(merchants) {
 
 /**
  * 批量插入货源信息
+ * item: { product_code, product_name, mode, seg, cost_price, sell_price, caps: {tierInt: cap}, unit, notes }
  */
 export function insertProducts(products) {
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO products 
-    (product_code, product_name, tier_required, cost_price, sell_price, profit, category, unit, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (product_code, product_name, mode, seg, cost_price, sell_price, profit, caps_json, unit, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
-  
+
   const insertMany = db.transaction((items) => {
     for (const item of items) {
       const profit = (item.sell_price || 0) - (item.cost_price || 0)
       stmt.run(
         item.product_code,
         item.product_name,
-        item.tier_required,
+        item.mode || null,
+        item.seg || null,
         item.cost_price || 0,
         item.sell_price || 0,
         profit,
-        item.category,
+        JSON.stringify(item.caps || {}),
         item.unit || '条',
         item.notes
       )
     }
   })
-  
+
   insertMany(products)
   console.log(`[Database] 插入 ${products.length} 条货源信息`)
+}
+
+/**
+ * 批量插入段位总量上限
+ * item: { seg, tier(int), cap }
+ */
+export function insertSegCaps(segCaps) {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO seg_caps (seg, tier, cap) VALUES (?, ?, ?)
+  `)
+  const insertMany = db.transaction((items) => {
+    for (const item of items) {
+      stmt.run(item.seg, item.tier, item.cap || 0)
+    }
+  })
+  insertMany(segCaps)
+  console.log(`[Database] 插入 ${segCaps.length} 条段位总量上限`)
+}
+
+/**
+ * 查询某档位下的段位总量上限，返回 { '5段': n, '6段': n, '7段': n }
+ */
+export function getSegCapsByTier(tierInt) {
+  const rows = db.prepare('SELECT seg, cap FROM seg_caps WHERE tier = ?').all(tierInt)
+  const result = {}
+  for (const r of rows) result[r.seg] = r.cap
+  return result
 }
 
 /**
@@ -365,17 +408,34 @@ export function getMerchantByLicense(licenseNo) {
 }
 
 /**
- * 根据档位查询可用货源
+ * 根据档位查询可订货源
+ * 从配额矩阵中取出该档位的 cap，只返回 cap>0 的货源
+ * @param {string|number} tier 商户档位（任意格式）
  */
 export function getProductsByTier(tier) {
-  // 简单逻辑：档位匹配或不限档位
-  const products = db.prepare(`
-    SELECT * FROM products 
-    WHERE tier_required = ? OR tier_required IS NULL OR tier_required = ''
-    ORDER BY profit DESC
-  `).all(tier)
-  
-  return products
+  const tierInt = normalizeTier(tier)
+  if (tierInt == null) {
+    console.warn('[Database] 无法识别的档位:', tier)
+    return []
+  }
+
+  const all = db.prepare('SELECT * FROM products').all()
+  const result = []
+  for (const p of all) {
+    let caps = {}
+    try {
+      caps = p.caps_json ? JSON.parse(p.caps_json) : {}
+    } catch {
+      caps = {}
+    }
+    const cap = Number(caps[tierInt]) || 0
+    if (cap > 0) {
+      result.push({ ...p, cap })
+    }
+  }
+  // 按性价比排序交给 optimizer，这里按毛利粗排
+  result.sort((a, b) => b.profit - a.profit)
+  return result
 }
 
 /**

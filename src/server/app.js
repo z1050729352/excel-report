@@ -12,10 +12,12 @@ import {
   clearAllData,
   insertMerchants,
   insertProducts,
+  insertSegCaps,
   insertChanges,
   applyChanges,
   getMerchantByLicense,
   getProductsByTier,
+  getSegCapsByTier,
   getAllMerchants,
   getStats,
   parseMerchantSheetFromBuffer,
@@ -24,7 +26,8 @@ import {
   previewExcelFromBuffer,
   optimizeOrder,
   generateOrderGuide,
-  generateReportHTML
+  generateReportHTML,
+  normalizeTier
 } from '../core/index.js'
 
 import { saveReport, getReport, getReportCount, getReportsDir, getLocalIP } from './reports.js'
@@ -121,7 +124,8 @@ export function createApp(options = {}) {
         return res.status(404).json({ success: false, error: '未找到该商户' })
       }
       const products = getProductsByTier(merchant.tier)
-      const orderPlan = optimizeOrder(products, merchant.budget, merchant.tier)
+      const segCaps = getSegCapsByTier(normalizeTier(merchant.tier))
+      const orderPlan = optimizeOrder(products, merchant.budget, merchant.tier, segCaps)
       const orderGuide = generateOrderGuide(merchant, products, orderPlan)
       res.json({ success: true, orderGuide })
     } catch (err) {
@@ -140,7 +144,8 @@ export function createApp(options = {}) {
         return res.status(404).json({ success: false, error: '未找到该商户' })
       }
       const products = getProductsByTier(merchant.tier)
-      const orderPlan = optimizeOrder(products, merchant.budget, merchant.tier)
+      const segCaps = getSegCapsByTier(normalizeTier(merchant.tier))
+      const orderPlan = optimizeOrder(products, merchant.budget, merchant.tier, segCaps)
       const orderGuide = generateOrderGuide(merchant, products, orderPlan)
       const html = generateReportHTML(orderGuide)
       const reportId = saveReport(html)
@@ -174,8 +179,9 @@ export function createApp(options = {}) {
         insertMerchants(merchants)
         count = merchants.length
       } else if (type === 'products') {
-        const products = parseProductSheetFromBuffer(buffer)
+        const { products, segCaps } = parseProductSheetFromBuffer(buffer)
         insertProducts(products)
+        if (segCaps.length > 0) insertSegCaps(segCaps)
         count = products.length
       } else {
         changes = parseChangeSheetFromBuffer(buffer)

@@ -11,6 +11,8 @@ import {
   applyChanges,
   getMerchantByLicense,
   getProductsByTier,
+  getSegCapsByTier,
+  insertSegCaps,
   getAllMerchants,
   getStats,
   closeDatabase,
@@ -20,7 +22,8 @@ import {
   previewExcel,
   optimizeOrder,
   generateOrderGuide,
-  generateReportHTML
+  generateReportHTML,
+  normalizeTier
 } from '../core/index.js'
 
 import { initReports, saveReport } from '../server/reports.js'
@@ -112,8 +115,9 @@ ipcMain.handle('import-merchants', async (_e, filePath) => {
 
 ipcMain.handle('import-products', async (_e, filePath) => {
   try {
-    const products = parseProductSheet(filePath)
+    const { products, segCaps } = parseProductSheet(filePath)
     insertProducts(products)
+    if (segCaps.length > 0) insertSegCaps(segCaps)
     return { success: true, count: products.length }
   } catch (err) {
     console.error('[IPC] 导入货源表失败:', err)
@@ -168,7 +172,8 @@ ipcMain.handle('generate-order-plan', async (_e, { licenseNo }) => {
       return { success: false, error: '未找到该商户' }
     }
     const products = getProductsByTier(merchant.tier)
-    const orderPlan = optimizeOrder(products, merchant.budget, merchant.tier)
+    const segCaps = getSegCapsByTier(normalizeTier(merchant.tier))
+    const orderPlan = optimizeOrder(products, merchant.budget, merchant.tier, segCaps)
     const orderGuide = generateOrderGuide(merchant, products, orderPlan)
     return { success: true, orderGuide }
   } catch (err) {
@@ -190,7 +195,8 @@ ipcMain.handle('share-report', async (_e, { licenseNo }) => {
     }
 
     const products = getProductsByTier(merchant.tier)
-    const orderPlan = optimizeOrder(products, merchant.budget, merchant.tier)
+    const segCaps = getSegCapsByTier(normalizeTier(merchant.tier))
+    const orderPlan = optimizeOrder(products, merchant.budget, merchant.tier, segCaps)
     const orderGuide = generateOrderGuide(merchant, products, orderPlan)
     const html = generateReportHTML(orderGuide)
     const reportId = saveReport(html)

@@ -119,89 +119,113 @@ export function parseMerchantSheet(filePath) {
   return parseMerchantSheetFromBuffer(readFileSync(filePath))
 }
 
-function mapProductsFromSheets(sheets) {
-  const sheetName = Object.keys(sheets)[0]
-  const rows = sheets[sheetName]
+/**
+ * 从行对象中提取各档位配额矩阵
+ * 匹配形如「30档」「01档」的列，key 为档位整数
+ */
+function extractCapsMatrix(row) {
+  const caps = {}
+  for (const key of Object.keys(row)) {
+    const m = String(key).match(/^0*(\d{1,2})档$/)
+    if (m) {
+      const tier = parseInt(m[1], 10)
+      if (tier >= 1 && tier <= 30) {
+        const v = row[key]
+        const n = v === '' || v == null ? 0 : Number(v)
+        if (Number.isFinite(n) && n > 0) caps[tier] = n
+      }
+    }
+  }
+  return caps
+}
 
-  console.log('[ExcelParser] 货源表原始数据示例:', rows[0])
+function mapProductsFromSheets(sheets) {
+  // 主数据表：含「商品名称」和档位列的表
+  const sheetName =
+    Object.keys(sheets).find((name) => {
+      const first = sheets[name][0]
+      return first && Object.keys(first).some((k) => /^0*\d{1,2}档$/.test(k))
+    }) || Object.keys(sheets)[0]
+
+  const rows = sheets[sheetName]
   console.log('[ExcelParser] 货源表字段名:', Object.keys(rows[0] || {}))
 
   const products = rows
     .map((row, index) => {
-      const productCode = findField(row, [
-        '序号',
-        '货源编号',
-        '编号',
-        'product_code',
-        'code',
-        '代码',
-        '品牌代码',
-        '卷烟代码'
-      ])
       const productName = findField(row, [
         '商品名称',
         '品牌名称',
         '货源名称',
         '名称',
         'product_name',
-        'name',
-        '品牌',
-        '卷烟品牌'
+        '品牌'
       ])
-      const tierRequired = findField(row, ['档位要求', '档位', 'tier_required', 'tier', '要求档位', '投放档位'])
-      const isDistribute = findField(row, ['是否投放', '投放'])
-      const distributeMethod = findField(row, ['投放方式'])
-
-      const costPrice = parseFloat(findField(row, ['成本价', '进价', 'cost_price', 'cost', '批发价']) || 0)
-      const sellPrice = parseFloat(findField(row, ['售价', '零售价', 'sell_price', 'price', '建议零售价']) || 0)
-      const category = findField(row, ['分类', 'category', '类别', '品类'])
-      const unit = findField(row, ['单位', 'unit']) || '条'
-
-      let estimatedCost = costPrice
-      let estimatedSell = sellPrice
-
-      if (productName && estimatedCost === 0 && estimatedSell === 0) {
-        if (productName.includes('中华')) {
-          estimatedCost = 500
-          estimatedSell = 550
-        } else if (productName.includes('南京') || productName.includes('利群')) {
-          estimatedCost = 200
-          estimatedSell = 220
-        } else if (productName.includes('黄金叶') || productName.includes('黄鹤楼')) {
-          estimatedCost = 150
-          estimatedSell = 165
-        } else if (productName.includes('芙蓉王')) {
-          estimatedCost = 300
-          estimatedSell = 330
-        } else {
-          estimatedCost = 100
-          estimatedSell = 110
-        }
-      }
+      const mode = findField(row, ['投放模式', '投放方式', 'mode'])
+      const seg = findField(row, ['价位段', 'seg', '段位']) || null
+      const costPrice = parseFloat(
+        findField(row, ['进货价(元/条)', '进货价', '成本价', '进价', 'cost_price', '批发价']) || 0
+      )
+      const sellPrice = parseFloat(
+        findField(row, ['零售价(元/条·估算待核实)', '零售价', '售价', 'sell_price', '建议零售价']) || 0
+      )
+      const caps = extractCapsMatrix(row)
 
       return {
-        product_code: productCode || `P${index + 1}`,
+        product_code: `P${index + 1}`,
         product_name: productName,
-        tier_required: tierRequired,
-        cost_price: estimatedCost,
-        sell_price: estimatedSell,
-        category: category || distributeMethod,
-        unit: unit,
-        notes: isDistribute === '否' ? '不投放' : null
+        mode: mode || null,
+        seg: seg || null,
+        cost_price: costPrice,
+        sell_price: sellPrice,
+        caps,
+        unit: '条',
+        notes: null
       }
     })
-    .filter((p) => p.product_name && p.product_name !== '商品名称')
+    .filter((p) => p.product_name && p.product_name !== '商品名称' && p.cost_price > 0)
 
   console.log(`[ExcelParser] 解析货源信息: ${products.length} 条`)
-  if (products.length > 0) {
-    console.log('[ExcelParser] 货源示例:', products[0])
-  }
+  if (products.length > 0) console.log('[ExcelParser] 货源示例:', products[0])
   return products
 }
 
+/**
+ * 解析段位总量上限表
+ * 优先从名为「段位总量」的 sheet 读；否则返回空数组
+ * 格式：每行 { 段位, 30档, 29档, ... }
+ */
+function mapSegCapsFromSheets(sheets) {
+  const sheetName = Object.keys(sheets).find((n) => /段位|总量/.test(n))
+  if (!sheetName) return []
+
+  const rows = sheets[sheetName]
+  const segCaps = []
+  for (const row of rows) {
+    const seg = findField(row, ['段位', 'seg', '价位段'])
+    if (!seg) continue
+    for (const key of Object.keys(row)) {
+      const m = String(key).match(/^0*(\d{1,2})档$/)
+      if (m) {
+        const tier = parseInt(m[1], 10)
+        const v = row[key]
+        const cap = v === '' || v == null ? 0 : Number(v)
+        if (Number.isFinite(cap) && cap > 0) segCaps.push({ seg, tier, cap })
+      }
+    }
+  }
+  console.log(`[ExcelParser] 解析段位总量上限: ${segCaps.length} 条`)
+  return segCaps
+}
+
+/**
+ * @returns {{ products: Array, segCaps: Array }}
+ */
 export function parseProductSheetFromBuffer(buffer) {
   const { sheets } = parseExcelFromBuffer(buffer)
-  return mapProductsFromSheets(sheets)
+  return {
+    products: mapProductsFromSheets(sheets),
+    segCaps: mapSegCapsFromSheets(sheets)
+  }
 }
 
 export function parseProductSheet(filePath) {

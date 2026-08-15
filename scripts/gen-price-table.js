@@ -83,6 +83,20 @@ const wsNote = XLSX.utils.aoa_to_sheet(notes)
 wsNote['!cols'] = [{ wch: 14 }, { wch: 80 }]
 XLSX.utils.book_append_sheet(newWb, wsNote, '说明')
 
+// 段位总量上限 sheet（从原投放表行2-4读取各档位的段位总量）
+const segHeader = ['段位', ...gradeCols.map(g => g.label)]
+const segRows = [segHeader]
+for (let i = 2; i <= 4; i++) {
+  const seg = rows[i][0]
+  if (!seg) continue
+  const row = [seg]
+  gradeCols.forEach(g => { row.push(rows[i][g.col] === '' ? '' : rows[i][g.col]) })
+  segRows.push(row)
+}
+const wsSeg = XLSX.utils.aoa_to_sheet(segRows)
+wsSeg['!cols'] = segHeader.map(() => ({ wch: 6 }))
+XLSX.utils.book_append_sheet(newWb, wsSeg, '段位总量')
+
 XLSX.writeFile(newWb, 'src/烟草进价零售价毛利表.xlsx')
 console.log('已生成: src/烟草进价零售价毛利表.xlsx')
 console.log('品种数:', out.length)
