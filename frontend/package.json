@@ -1,0 +1,30 @@
+{
+    "name": "tobacco-order-frontend",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "preinstall": "node ../check-node-version.js",
+        "predev": "node ../check-node-version.js",
+        "prebuild": "node ../check-node-version.js",
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "@element-plus/icons-vue": "^2.3.1",
+        "axios": "^1.6.0",
+        "element-plus": "^2.5.0",
+        "html2canvas": "^1.4.1",
+        "pinia": "^2.1.7",
+        "vue": "^3.4.0",
+        "vue-router": "^4.2.5"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-vue": "^5.0.0",
+        "vite": "^5.0.0"
+    },
+    "engines": {
+        "node": ">=22.0.0",
+        "npm": ">=9.0.0"
+    }
+}
