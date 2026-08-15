@@ -1,94 +1,163 @@
-# Excel 报告生成器
+# 烟草订货管理系统
 
-一款基于 Electron + Vue 3 的桌面应用，用于快速分析 Excel 数据并生成可视化 PDF 报告。内置 AI 智能分析能力（智谱 GLM-4-Flash），支持自动生成执行摘要、深度洞察和数据问答。
+一款基于 Vue 3 + Node.js 的烟草订货管理系统，采用前后端分离架构，支持 PC 端和移动端 H5 访问。系统包含管理后台和商户端两个应用，实现商户信息管理、货源投放策略管理、智能订货方案推荐等功能。
 
 ## 功能特性
 
-- **Excel 解析**：支持 `.xlsx`、`.xls`、`.csv` 格式，拖拽或点击上传
-- **多维度统计分析**：自动识别数值列、分类列、时间列，计算均值/中位数/标准差/变异系数等
-- **时间趋势**：按月/季度聚合，自动计算环比、同比增长率
-- **分类分析**：按分类维度分组聚合，支持多维交叉分析
-- **相关性分析**：皮尔逊相关系数矩阵
-- **数据质量评估**：填充率、重复行检测、百分制评分
-- **异常值检测**：基于 ±3σ 规则自动标记
-- **AI 智能分析**：一键生成执行摘要、深度洞察，支持自然语言提问
-- **PDF 报告导出**：基于 ECharts 图表渲染，导出 A4 格式 PDF
+### 管理后台
+- **商户信息管理**：支持上传商户信息表，查询、查看商户详情
+- **货源投放策略管理**：上传投放策略，自动应用到订货推荐
+- **数据更变管理**：支持上传更变表，批量更新商户数据
+- **报表管理**：查看和导出订货报表
+
+### 商户端
+- **商户信息查询**：输入商户号查看自己的基本信息
+- **预算订货**：输入预算金额，智能推荐最优订货方案
+- **订单管理**：查看历史订单记录
+- **方案导出**：一键生成订货方案图片并保存
 
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
-| 框架 | Electron 33 + electron-vite |
-| 前端 | Vue 3 (Composition API) |
-| 图表 | ECharts 5 |
+| 后端框架 | Node.js + Express |
+| 数据库 | MySQL 8.0 |
+| 前端框架 | Vue 3 (Composition API) + Vite |
+| UI 组件库 | Element Plus |
+| 状态管理 | Pinia |
 | Excel 解析 | SheetJS (xlsx) |
-| AI | 智谱 GLM-4-Flash |
-| 构建 | Vite 5 + electron-builder |
+| 容器化 | Docker Compose |
 
 ## 快速开始
 
 ### 环境要求
 
-- Node.js >= 18
-- npm >= 9
+- Node.js >= 22.0.0
+- Docker (用于运行 MySQL)
+- npm >= 10
 
-### 安装依赖
+### 1. 安装依赖
 
 ```bash
-npm install
+# 在项目根目录
+npm run install:all
 ```
 
-### 开发模式
+### 2. 启动数据库
 
 ```bash
+npm run docker:up
+```
+
+### 3. 启动服务
+
+```bash
+# 同时启动前后端（推荐）
 npm run dev
+
+# 或分别启动
+npm run dev:backend  # 后端：http://localhost:3001
+npm run dev:frontend # 前端：http://localhost:3000
 ```
 
-### 构建打包
+### 4. 访问应用
 
-```bash
-# macOS
-npm run build:mac
-
-# Windows
-npm run build:win
-```
+- **商户端**：http://localhost:3000/
+- **管理后台**：http://localhost:3000/admin.html
+- **管理员账号**：admin / admin123
 
 ## 项目结构
 
 ```
-src/
-├── main/                # Electron 主进程
-│   ├── index.js         # 主进程入口，IPC 通信，窗口管理
-│   ├── analyzer.js      # 数据分析引擎（统计、趋势、分类、相关性等）
-│   ├── aiAnalyzer.js    # AI 分析模块（调用智谱 GLM API）
-│   └── aiConfig.js      # AI 配置（API Key、模型、端点）
-├── preload/
-│   └── index.js         # 预加载脚本，暴露 electronAPI 给渲染进程
-└── renderer/
-    ├── index.html       # 渲染进程入口 HTML
-    └── src/
-        ├── App.vue      # 主界面组件
-        ├── main.js      # Vue 应用入口
-        ├── report-template.html  # PDF 报告 HTML 模板
-        └── assets/
-            └── main.css # 全局样式
+tobacco-order-system/
+├── backend/                 # 后端服务
+│   ├── src/
+│   │   ├── app.js          # Express 应用入口
+│   │   ├── config/         # 配置文件
+│   │   ├── middleware/     # 中间件（认证、文件上传等）
+│   │   ├── models/         # 数据库模型
+│   │   ├── routes/         # 路由（admin, auth, merchant）
+│   │   └── services/       # 业务逻辑（Excel解析、算法优化等）
+│   └── package.json
+├── frontend/               # 前端应用
+│   ├── src/
+│   │   ├── admin/         # 管理后台
+│   │   │   ├── views/     # 页面组件
+│   │   │   ├── router/    # 路由配置
+│   │   │   └── layouts/   # 布局组件
+│   │   ├── client/        # 商户端
+│   │   │   ├── views/     # 页面组件
+│   │   │   ├── router/    # 路由配置
+│   │   │   ├── stores/    # Pinia 状态
+│   │   │   └── layouts/   # 布局组件
+│   │   └── shared/        # 共享模块
+│   │       ├── api/       # API 请求封装
+│   │       └── utils/     # 工具函数
+│   ├── admin.html         # 管理后台入口
+│   ├── index.html         # 商户端入口
+│   └── package.json
+├── data/                   # 数据目录
+│   ├── 货源投放策略7.23.xls
+│   ├── 烟草进价零售价毛利表.xlsx
+│   └── reports/           # 报表存储
+├── database/              # 数据库脚本
+│   └── init.sql          # 初始化 SQL
+├── docker-compose.yml    # Docker 配置
+└── package.json         # 根配置（workspaces）
 ```
 
-## 使用流程
+## 开发指南
 
-1. 启动应用，拖入或选择 Excel 文件
-2. 自动解析并展示数据概览、质量评分、统计指标
-3. 切换 Tab 查看趋势、分类、洞察等维度
-4. 点击「AI 智能分析」生成执行摘要或深度洞察
-5. 点击「导出 PDF」生成完整分析报告
-
-## AI 配置
-
-默认使用智谱 GLM-4-Flash 模型。如需自定义 API Key，可设置环境变量：
+### 数据库管理
 
 ```bash
-export GLM_API_KEY=your_api_key_here
+# 启动数据库
+npm run docker:up
+
+# 停止数据库
+npm run docker:down
+
+# 查看日志
+npm run docker:logs
+```
+
+### 构建部署
+
+```bash
+# 构建前后端
+npm run build
+
+# 启动生产环境
+npm run start:backend
+npm run start:frontend
+```
+
+## 核心算法
+
+系统内置智能订货算法，基于商户预算和货源投放策略，自动计算：
+- 档位优化（Class A/B/C 分层推荐）
+- 毛利最大化
+- 销售金额与预算匹配
+- 品牌多样性平衡
+
+详见 `backend/src/services/optimizer.js`
+
+## 环境变量
+
+### 后端 (backend/.env)
+```env
+PORT=3001
+DB_HOST=localhost
+DB_PORT=3307
+DB_USER=root
+DB_PASSWORD=tobacco123
+DB_NAME=tobacco_order
+JWT_SECRET=your-secret-key
+```
+
+### 前端 (frontend/.env.development)
+```env
+VITE_API_BASE_URL=http://localhost:3001
 ```
 
 ## License

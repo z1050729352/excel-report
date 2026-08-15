@@ -1,17 +1,27 @@
 # Dependencies
 node_modules/
-
-# Local node-gyp Python env (setuptools for native builds)
-.node-gyp-python/
+*/node_modules/
 
 # Build output
-out/
 dist/
-dist-web/
+backend/dist/
+frontend/dist/
 
 # Environment & secrets
 .env
 .env.local
+backend/.env
+frontend/.env.local
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+data/tobacco.db*
+
+# Uploads & Reports
+data/uploads/
+data/reports/
 
 # OS files
 .DS_Store
@@ -25,3 +35,7 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+logs/
+
+# Package locks (optional, 根据团队规范决定)
+# package-lock.json

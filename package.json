@@ -1,89 +1,34 @@
 {
-    "name": "excel-report",
+    "name": "tobacco-order-system",
     "version": "1.0.0",
-    "description": "Excel 数据分析报告生成器 - Electron Desktop App",
-    "main": "./out/main/index.js",
+    "description": "烟草订货管理系统 - 前后端分离架构",
     "author": "zhubaodong",
+    "private": true,
+    "workspaces": [
+        "backend",
+        "frontend"
+    ],
     "scripts": {
-        "predev": "node check-node-version.js",
-        "prebuild": "node check-node-version.js",
-        "prestart": "node check-node-version.js",
-        "format": "prettier --write .",
-        "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
-        "start": "electron-vite preview",
-        "dev": "electron-vite dev",
-        "build": "electron-vite build",
-        "rebuild:native:node": "npm rebuild better-sqlite3",
-        "rebuild:native:electron": "electron-builder install-app-deps",
-        "predev:web": "node check-node-version.js && npm run rebuild:native:node",
-        "dev:web": "concurrently -k -n server,web -c blue,green \"npm:dev:web:server\" \"npm:dev:web:client\"",
-        "dev:web:server": "node --watch --experimental-default-type=module src/server/index.js",
-        "dev:web:client": "vite --config vite.web.config.mjs",
-        "build:web": "vite build --config vite.web.config.mjs",
-        "prestart:web": "node check-node-version.js && npm run rebuild:native:node",
-        "start:web": "node --experimental-default-type=module src/server/index.js",
-        "postinstall": "electron-builder install-app-deps",
-        "build:mac": "npm run build && electron-builder --mac",
-        "build:win": "npm run build && electron-builder --win"
+        "preinstall": "node check-node-version.js",
+        "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+        "dev:backend": "cd backend && npm run dev",
+        "dev:frontend": "cd frontend && npm run dev",
+        "dev": "concurrently -k -n backend,frontend -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
+        "build:backend": "cd backend && npm run build",
+        "build:frontend": "cd frontend && npm run build",
+        "build": "npm run build:backend && npm run build:frontend",
+        "start:backend": "cd backend && npm start",
+        "start:frontend": "cd frontend && npm run preview",
+        "lint": "prettier --write .",
+        "docker:up": "docker-compose up -d",
+        "docker:down": "docker-compose down",
+        "docker:logs": "docker-compose logs -f"
     },
     "engines": {
         "node": ">=22.0.0"
     },
-    "dependencies": {
-        "@electron-toolkit/preload": "^3.0.0",
-        "@electron-toolkit/utils": "^3.0.0",
-        "better-sqlite3": "^12.10.0",
-        "echarts": "^5.5.0",
-        "express": "^5.2.1",
-        "multer": "^2.2.0",
-        "qrcode": "^1.5.4",
-        "xlsx": "^0.18.5"
-    },
     "devDependencies": {
-        "@vitejs/plugin-vue": "^5.0.4",
         "concurrently": "^9.2.4",
-        "electron": "^33.2.0",
-        "electron-builder": "^25.1.8",
-        "electron-vite": "^2.3.0",
-        "prettier": "^3.2.5",
-        "vite": "^5.4.0",
-        "vue": "^3.5.0"
-    },
-    "build": {
-        "appId": "com.excel.report",
-        "productName": "Excel 报告生成器",
-        "directories": {
-            "output": "dist"
-        },
-        "files": [
-            "out/**/*",
-            "resources/**/*"
-        ],
-        "mac": {
-            "target": [
-                "dmg",
-                "zip"
-            ],
-            "category": "public.app-category.productivity"
-        },
-        "win": {
-            "target": [
-                {
-                    "target": "nsis",
-                    "arch": [
-                        "x64"
-                    ]
-                }
-            ]
-        },
-        "nsis": {
-            "oneClick": false,
-            "allowToChangeInstallationDirectory": true,
-            "installerLanguages": [
-                "zh_CN",
-                "en_US"
-            ],
-            "language": "2052"
-        }
+        "prettier": "^3.2.5"
     }
 }
