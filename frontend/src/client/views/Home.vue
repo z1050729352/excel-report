@@ -168,6 +168,18 @@
             该档位暂无可订货源，请联系客服
           </div>
 
+          <!-- 经营策略建议 -->
+          <div v-if="strategy && strategy.suggestions && strategy.suggestions.length" class="strategy-block">
+            <div class="strategy-title">
+              <span class="strategy-icon">💡</span>
+              经营策略建议
+            </div>
+            <p class="strategy-summary">{{ strategy.summary }}</p>
+            <ul class="strategy-list">
+              <li v-for="(s, i) in strategy.suggestions" :key="i">{{ s }}</li>
+            </ul>
+          </div>
+
           <!-- 操作按钮 -->
           <div class="result-actions">
             <el-button
@@ -240,6 +252,15 @@
           </div>
         </div>
 
+        <div v-if="strategy && strategy.suggestions && strategy.suggestions.length" class="sc-strategy">
+          <div class="sc-strategy-title">💡 经营策略建议</div>
+          <div
+            v-for="(s, i) in strategy.suggestions"
+            :key="i"
+            class="sc-strategy-item"
+          >{{ s }}</div>
+        </div>
+
         <div class="sc-footer">本方案由系统算法自动生成，仅供参考</div>
       </div>
     </div>
@@ -271,6 +292,7 @@ const merchant = ref(null)
 const productCount = ref(0)
 const budget = ref(50000)
 const plan = ref(null)
+const strategy = ref(null)
 
 const capturing = ref(false)
 const previewImg = ref(null)
@@ -321,6 +343,7 @@ const generatePlan = async () => {
 
   planLoading.value = true
   plan.value = null
+  strategy.value = null
 
   try {
     const res = await request.post('/merchant/plan', {
@@ -329,6 +352,7 @@ const generatePlan = async () => {
     })
     if (res.success) {
       plan.value = res.orderPlan
+      strategy.value = res.businessStrategy || null
       if (res.orderPlan.items.length === 0) {
         ElMessage.info(res.orderPlan.summary || '该档位暂无可订货源')
       }
@@ -346,6 +370,7 @@ const resetAll = () => {
   licenseNo.value = ''
   merchant.value = null
   plan.value = null
+  strategy.value = null
   queryError.value = ''
   budget.value = 50000
 }
@@ -620,6 +645,50 @@ const generateImage = async () => {
   font-size: 14px;
 }
 
+/* 经营策略 */
+.strategy-block {
+  margin-top: 18px;
+  background: #FBF6EF;
+  border: 1px solid #EADFCB;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.strategy-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #C4612F;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.strategy-icon {
+  font-size: 16px;
+}
+
+.strategy-summary {
+  font-size: 13px;
+  color: #5C635D;
+  margin: 0 0 10px 0;
+  line-height: 1.6;
+}
+
+.strategy-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.strategy-list li {
+  font-size: 13px;
+  color: #1F2421;
+  line-height: 1.7;
+}
+
 /* 动画 */
 .slide-up-enter-active {
   transition: all 0.3s ease;
@@ -756,6 +825,37 @@ const generateImage = async () => {
 
 .sc-item-row .green {
   color: #52c41a;
+}
+
+.sc-strategy {
+  margin-bottom: 14px;
+  background: #FBF6EF;
+  border: 1px solid #EADFCB;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.sc-strategy-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #C4612F;
+  margin-bottom: 8px;
+}
+
+.sc-strategy-item {
+  font-size: 11px;
+  color: #1F2421;
+  line-height: 1.6;
+  margin-bottom: 6px;
+  padding-left: 10px;
+  position: relative;
+}
+
+.sc-strategy-item::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: #C4612F;
 }
 
 .sc-footer {

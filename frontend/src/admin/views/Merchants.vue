@@ -59,6 +59,14 @@
         <el-table-column prop="license_no" label="许可证号" min-width="160" />
         <el-table-column prop="customer_name" label="客户名称" min-width="160" show-overflow-tooltip />
         <el-table-column prop="tier" label="档位" width="90" />
+        <el-table-column label="当月销量" width="110">
+          <template #default="{ row }">
+            <span v-if="row.monthly_sales != null" class="sales-value">
+              {{ Number(row.monthly_sales) }} 条
+            </span>
+            <span v-else class="sales-empty">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="credit_level" label="诚信等级" width="100">
           <template #default="{ row }">
             <el-tag v-if="row.credit_level" size="small">{{ row.credit_level }}</el-tag>
@@ -223,6 +231,10 @@ const bizFields = [
   { key: 'business_type',    label: '业态' },
   { key: 'business_scale',   label: '经营规模' },
   { key: 'business_circle',  label: '商圈' },
+  { key: 'monthly_sales',    label: '当月销量(条)' },
+  { key: 'sales_amount',     label: '当月销额(元)' },
+  { key: 'box_value',        label: '单箱值(元)' },
+  { key: 'sales_month',      label: '销量月份' },
 ]
 const orderFields = [
   { key: 'order_cycle',      label: '订货周期类型' },
@@ -331,6 +343,15 @@ const fetchMerchants = async () => {
 .mobile-pagination-total {
   font-size: 13px;
   color: #5C635D;
+}
+
+.sales-value {
+  color: #C4612F;
+  font-weight: 500;
+}
+
+.sales-empty {
+  color: #bbb;
 }
 
 /* 详情弹窗 */

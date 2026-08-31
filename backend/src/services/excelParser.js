@@ -126,6 +126,84 @@ export function parseMerchantSheet(buffer) {
 }
 
 /**
+ * 解析商户订货表（多指标销售汇总）
+ * 表格结构：
+ *   行0：标题「多指标销售汇总（市公司）」
+ *   行1：查询日期 / 计量单位
+ *   行2：表头「客户编码 客户名称 客户档位 销量 含税销额 单箱值」
+ *   行3：合计行（客户编码为空）
+ *   行4+：数据行
+ * 用 header:1 方式按位置读取，避免特殊表头干扰。
+ *
+ * @param {Buffer} buffer
+ * @returns {{ records: Array, salesMonth: string|null }}
+ */
+export function parseSalesSheet(buffer) {
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true })
+  const sheetName = workbook.SheetNames[0]
+  const sheet = workbook.Sheets[sheetName]
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+
+  // 提取销量月份（从"查询日期：2026-08 至 2026-08"中取第一个 YYYY-MM）
+  let salesMonth = null
+  for (let i = 0; i < Math.min(rows.length, 3); i++) {
+    const joined = (rows[i] || []).join(' ')
+    const m = joined.match(/(\d{4}-\d{2})/)
+    if (m) {
+      salesMonth = m[1]
+      break
+    }
+  }
+
+  // 定位表头行：包含"客户编码"和"销量"
+  let headerIdx = -1
+  for (let i = 0; i < Math.min(rows.length, 6); i++) {
+    const cells = (rows[i] || []).map((c) => String(c).trim())
+    if (cells.includes('客户编码') && cells.some((c) => c.includes('销量'))) {
+      headerIdx = i
+      break
+    }
+  }
+  if (headerIdx === -1) {
+    throw new Error('未找到表头行（需包含"客户编码"和"销量"列）')
+  }
+
+  const header = (rows[headerIdx] || []).map((c) => String(c).trim())
+  const col = (name) => header.findIndex((h) => h.includes(name))
+  const idxCode = col('客户编码')
+  const idxName = col('客户名称')
+  const idxTier = col('客户档位')
+  const idxSales = header.findIndex((h) => h === '销量' || h.includes('销量'))
+  const idxAmount = header.findIndex((h) => h.includes('销额'))
+  const idxBox = header.findIndex((h) => h.includes('单箱值'))
+
+  const records = []
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i] || []
+    const code = String(row[idxCode] ?? '').trim()
+    // 跳过合计行、空行（客户编码必须是数字串）
+    if (!code || !/^\d+$/.test(code)) continue
+
+    const toNum = (v) => {
+      const n = Number(String(v ?? '').replace(/,/g, ''))
+      return Number.isFinite(n) ? n : null
+    }
+
+    records.push({
+      license_no: code,
+      customer_name: idxName !== -1 ? String(row[idxName] ?? '').trim() : null,
+      tier: idxTier !== -1 ? String(row[idxTier] ?? '').trim() : null,
+      monthly_sales: idxSales !== -1 ? toNum(row[idxSales]) : null,
+      sales_amount: idxAmount !== -1 ? toNum(row[idxAmount]) : null,
+      box_value: idxBox !== -1 ? toNum(row[idxBox]) : null
+    })
+  }
+
+  console.log(`[ExcelParser] 解析商户订货(销量)表: ${records.length} 条, 月份: ${salesMonth}`)
+  return { records, salesMonth }
+}
+
+/**
  * 从行对象中提取各档位配额矩阵
  * 匹配形如「30档」「01档」的列，key 为档位整数
  */

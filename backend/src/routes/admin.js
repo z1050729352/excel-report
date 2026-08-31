@@ -2,7 +2,8 @@ import express from 'express'
 import { query, execute, transaction } from '../models/db.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { upload, handleUploadError } from '../middleware/upload.js'
-import { parseMerchantSheet, parseProductSheet, parseChangeSheet, parseStrategySheet } from '../services/excelParser.js'
+import { parseMerchantSheet, parseProductSheet, parseChangeSheet, parseStrategySheet, parseSalesSheet } from '../services/excelParser.js'
+import { normalizeTier } from '../services/tierUtils.js'
 
 const router = express.Router()
 
@@ -479,6 +480,63 @@ router.post('/import/strategy', upload.single('file'), handleUploadError, async 
     })
   }
 })
+
+/**
+ * POST /api/admin/import/sales
+ * 上传商户订货表（多指标销售汇总），按客户编码=许可证号关联到商户，
+ * 更新其当月销量 / 含税销额 / 单箱值 / 销量月份。
+ * 只更新已存在的商户，不新增商户。
+ */
+router.post('/import/sales', upload.single('file'), handleUploadError, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: '未上传文件' })
+    }
+
+    const { records, salesMonth } = parseSalesSheet(req.file.buffer)
+
+    if (records.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: '未解析到有效的销量数据，请检查文件格式'
+      })
+    }
+
+    let updatedCount = 0
+    let skippedCount = 0
+
+    await transaction(async (conn) => {
+      for (const r of records) {
+        const [result] = await conn.execute(
+          `UPDATE merchants
+           SET monthly_sales = ?, sales_amount = ?, box_value = ?, sales_month = ?
+           WHERE license_no = ?`,
+          [r.monthly_sales, r.sales_amount, r.box_value, salesMonth, r.license_no]
+        )
+        if (result.affectedRows > 0) updatedCount++
+        else skippedCount++
+      }
+    })
+
+    console.log(`[Admin] 销量导入: 更新 ${updatedCount} 条，未匹配 ${skippedCount} 条，月份 ${salesMonth}`)
+
+    res.json({
+      success: true,
+      updatedCount,
+      skippedCount,
+      salesMonth,
+      total: records.length,
+      message: `销量导入成功：更新 ${updatedCount} 个商户${skippedCount ? `，${skippedCount} 条未匹配到商户（已跳过）` : ''}${salesMonth ? `，数据月份 ${salesMonth}` : ''}`
+    })
+  } catch (err) {
+    console.error('[Admin] 导入销量失败:', err)
+    res.status(500).json({
+      success: false,
+      error: `导入失败: ${err.message}`
+    })
+  }
+})
+
 router.post('/changes/apply', async (req, res) => {
   try {
     const changes = await query(

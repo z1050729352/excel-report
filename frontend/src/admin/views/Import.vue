@@ -108,6 +108,37 @@
       </div>
     </div>
 
+    <!-- 商户订货表(销量)上传 -->
+    <div class="import-card">
+      <div class="card-header">
+        <div class="header-info">
+          <h3>
+            <el-icon class="header-icon"><TrendCharts /></el-icon>
+            商户订货表（当月销量）
+          </h3>
+          <p>导入"多指标销售汇总"表（如：商户8月订货量.xlsx），系统按客户编码匹配商户，更新其当月销量、含税销额、单箱值，用于商户端生成经营策略。仅更新已存在的商户。</p>
+        </div>
+        <el-upload
+          :action="uploadUrl + '/sales'"
+          :headers="uploadHeaders"
+          :on-success="(res) => handleUploadSuccess(res, '销量数据')"
+          :on-error="handleUploadError"
+          :before-upload="beforeUpload"
+          :show-file-list="false"
+          accept=".xlsx,.xls"
+        >
+          <el-button type="success">
+            <el-icon><Upload /></el-icon>
+            选择文件上传
+          </el-button>
+        </el-upload>
+      </div>
+      <div v-if="salesResult" class="upload-result">
+        <el-icon class="result-icon success"><CircleCheck /></el-icon>
+        <span>{{ salesResult }}</span>
+      </div>
+    </div>
+
     <!-- 更变表上传 -->
     <div class="import-card">
       <div class="card-header">
@@ -162,6 +193,7 @@ const merchantsResult = ref('')
 const productsResult = ref('')
 const changesResult = ref('')
 const strategyResult = ref('')
+const salesResult = ref('')
 
 const uploadUrl = computed(() => {
   return import.meta.env.VITE_API_BASE_URL + '/admin/import'
@@ -206,6 +238,8 @@ const handleUploadSuccess = (response, type) => {
     } else if (type === '投放策略') {
       strategyResult.value = response.message || `投放策略导入成功`
       uploadingStrategy.value = false
+    } else if (type === '销量数据') {
+      salesResult.value = response.message || `销量数据导入成功`
     }
   } else {
     ElMessage.error(response.error || `${type}导入失败`)

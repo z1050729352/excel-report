@@ -2,6 +2,49 @@ import express from 'express'
 import { query } from '../models/db.js'
 import { normalizeTier } from '../services/tierUtils.js'
 import { optimizeOrder } from '../services/optimizer.js'
+import { buildBusinessStrategy } from '../services/strategyAdvisor.js'
+
+/**
+ * 计算档位销量统计：本档位平均销量、下一档位及其平均销量
+ * 基于 merchants 表中已导入销量的商户
+ */
+async function computeTierStats(tierInt) {
+  if (!tierInt) return {}
+
+  // 拉取所有有销量的商户，按归一化档位聚合（tier 字段是中文/多格式，需在内存归一化）
+  const rows = await query(
+    'SELECT tier, monthly_sales FROM merchants WHERE monthly_sales IS NOT NULL'
+  )
+
+  const byTier = {} // tierInt -> { sum, count }
+  for (const r of rows) {
+    const t = normalizeTier(r.tier)
+    const s = Number(r.monthly_sales)
+    if (!t || !Number.isFinite(s)) continue
+    if (!byTier[t]) byTier[t] = { sum: 0, count: 0 }
+    byTier[t].sum += s
+    byTier[t].count += 1
+  }
+
+  const avgOf = (t) =>
+    byTier[t] && byTier[t].count > 0 ? +(byTier[t].sum / byTier[t].count).toFixed(1) : null
+
+  // 找下一个存在数据的更高档位
+  let nextTier = null
+  for (let t = tierInt + 1; t <= 30; t++) {
+    if (byTier[t] && byTier[t].count > 0) {
+      nextTier = t
+      break
+    }
+  }
+
+  return {
+    tierAvgSales: avgOf(tierInt),
+    tierMerchantCount: byTier[tierInt]?.count || 0,
+    nextTier,
+    nextTierAvgSales: nextTier ? avgOf(nextTier) : null
+  }
+}
 
 const router = express.Router()
 
@@ -160,7 +203,16 @@ router.post('/plan', async (req, res) => {
     
     // 计算最优方案
     const orderPlan = optimizeOrder(products, budget, merchant.tier, segCaps)
-    
+
+    // 生成经营策略建议
+    let businessStrategy = null
+    try {
+      const tierStats = await computeTierStats(tierInt)
+      businessStrategy = buildBusinessStrategy(merchant, tierStats)
+    } catch (err) {
+      console.warn('[Merchant] 生成经营策略失败:', err.message)
+    }
+
     // 记录查询日志（可选）
     try {
       await query(
@@ -174,11 +226,14 @@ router.post('/plan', async (req, res) => {
     res.json({
       success: true,
       orderPlan,
+      businessStrategy,
       merchant: {
         license_no: merchant.license_no,
         customer_name: merchant.customer_name,
         tier: merchant.tier,
-        credit_level: merchant.credit_level
+        credit_level: merchant.credit_level,
+        market_type: merchant.market_type,
+        monthly_sales: merchant.monthly_sales
       }
     })
   } catch (err) {
